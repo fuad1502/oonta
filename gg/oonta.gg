@@ -1,0 +1,40 @@
+%TERMINALS
+Let("let")
+Eq("=")
+Plus("+")
+Minus("-")
+Star("\*")
+Slash("/")
+Number("\d")
+Identifier("\w\w*")
+
+%RULES
+StmtList = StmtList Decl | Decl;
+
+Decl = VarBind | FunBind;
+VarBind = Let Identifier Eq Expr;
+FunBind = Let Identifier ParamList Eq Expr;
+
+ParamList = ParamList Param | Param;
+Param = Identifier;
+
+Expr = Identifier | Literal | Application | BinOp;
+
+BinOp = Expr Plus Expr | Expr Minus Expr | Expr Star Expr | Expr Slash Expr;
+
+Application = Application Expr | Identifier Expr;
+
+Literal = Number;
+
+%PRIORITIES
+Expr(1)
+
+BinOp(3)
+BinOp(4)
+Star
+Slash
+
+BinOp(1)
+BinOp(2)
+Plus
+Minus
