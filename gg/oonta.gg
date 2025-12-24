@@ -1,10 +1,15 @@
 %TERMINALS
 Let("let")
+In("in")
+Fun("fun")
 Eq("=")
+Arrow("->")
 Plus("+")
 Minus("-")
 Star("\*")
 Slash("/")
+LeftParen("\(")
+RightParen("\)")
 Number("\d")
 Identifier("\w\w*")
 
@@ -18,7 +23,13 @@ FunBind = Let Identifier ParamList Eq Expr;
 ParamList = ParamList Param | Param;
 Param = Identifier;
 
-Expr = Identifier | Literal | Application | BinOp;
+Expr = Identifier | Literal | Application | BinOp | LetIn | Parenthesize | AnonymousFun;
+
+AnonymousFun = Fun ParamList Arrow Expr;
+
+Parenthesize = LeftParen Expr RightParen;
+
+LetIn = Let Identifier Eq Expr In Expr;
 
 BinOp = Expr Plus Expr | Expr Minus Expr | Expr Star Expr | Expr Slash Expr;
 
@@ -28,6 +39,7 @@ Literal = Number;
 
 %PRIORITIES
 Expr(1)
+Expr(3)
 
 BinOp(3)
 BinOp(4)

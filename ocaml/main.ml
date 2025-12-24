@@ -1,5 +1,11 @@
 let x = 5
 let add a b = a + b + x
-let addthree a = add 3
+let addthree = add 3
 let y = add x x
-let z = addthree x
+
+let z =
+  let f = fun x y -> x * y in
+  f
+    (let x = 4 in
+     x)
+    x
