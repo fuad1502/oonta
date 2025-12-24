@@ -7,23 +7,25 @@ use crate::typ::Typed;
 //
 // let add a b = a + b + x
 // Bind("add",
-//     FunExpr::Anynoymous(
+//     FunExpr::Anonymous(
 //         ["a", "b"],
 //         BinOpExpr("+", BinOpExpr("+", VarExpr("a"), VarExpr("b")), "x")
+//     )
+// )
+//
+// let addthree = add 3
+// Bind("addthree",
+//     PartialExpr(
+//         FunExpr::Identifier("add"),
+//         [("a", LiteralExpr(3))]
 //     )
 // )
 //
 // let y = add x x
 // Bind("y",
 //     ApplicationExpr(
-//         FunExpr::Partial(
-//             ["b"],
-//             ApplicationExpr(
-//                 FunExpr::Identifier("add"),
-//                 ("a", VarExpr("x"))
-//             ),
-//         ),
-//         ("b", VarExpr("x"))
+//         FunExpr::Identifier("add"),
+//         [("a", VarExpr("x")), ("b", VarExpr("x"))]
 //     )
 // )
 
@@ -52,6 +54,11 @@ pub enum FunExpr {
 }
 
 pub struct ApplicationExpr {
+    pub fun: Rc<FunExpr>,
+    pub binds: Vec<(String, Rc<dyn Expr>)>,
+}
+
+pub struct PartialExpr {
     pub fun: Rc<FunExpr>,
     pub binds: Vec<(String, Rc<dyn Expr>)>,
 }
