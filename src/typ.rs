@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::ast::{ApplicationExpr, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr};
+use crate::ast::{
+    AnonymousFunExpr, ApplicationExpr, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
+    PartialExpr, VarExpr,
+};
 
 pub enum Type {
     Primitive(Primitive),
@@ -39,7 +42,25 @@ impl Typed for FunExpr {
     }
 }
 
+impl Typed for AnonymousFunExpr {
+    fn typ(&self, cache: &mut TypeCache) -> Type {
+        todo!()
+    }
+}
+
 impl Typed for ApplicationExpr {
+    fn typ(&self, cache: &mut TypeCache) -> Type {
+        todo!()
+    }
+}
+
+impl Typed for PartialExpr {
+    fn typ(&self, cache: &mut TypeCache) -> Type {
+        todo!()
+    }
+}
+
+impl Typed for LetInExpr {
     fn typ(&self, cache: &mut TypeCache) -> Type {
         todo!()
     }

@@ -8,17 +8,22 @@ mod typ;
 
 use std::path::Path;
 
-use crate::{ast_builder::build_ast, lexer::Lexer, parser::Parser, symbol::Symbol};
+use crate::{ast::Ast, ast_builder::AstBuilder, lexer::Lexer, parser::Parser, symbol::Symbol};
 
 pub fn compile(file_path: &Path) -> Result<(), String> {
     let mut lexer = Lexer::new(file_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     cst_root.pretty_print(&lexer, 0);
-    let _ = build_ast(cst_root);
+    let _ = build_ast(&lexer, &cst_root)?;
     Ok(())
 }
 
 fn parse(lexer: &mut Lexer) -> Result<Symbol, String> {
     let mut parser = Parser::new();
     parser.parse(lexer)
+}
+
+fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Result<Ast, String> {
+    let mut ast_builder = AstBuilder::new(&lexer);
+    ast_builder.visit(cst_root)
 }
