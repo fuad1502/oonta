@@ -1,6 +1,4 @@
-use std::rc::Rc;
-
-use crate::{symbol::Span, typ::Typed};
+use crate::symbol::Span;
 
 // let x = 5
 // Bind("x", LiteralExpr(5))
@@ -29,83 +27,83 @@ use crate::{symbol::Span, typ::Typed};
 //     )
 // )
 
+#[derive(Debug)]
 pub struct Ast {
     pub binds: Vec<Bind>,
 }
 
+#[derive(Debug)]
 pub struct Bind {
     pub name: Span,
-    pub expr: Rc<dyn Expr>,
+    pub expr: Box<Expr>,
     pub span: Span,
 }
 
-pub trait Expr: Spanned + Typed {}
-
-pub trait Spanned {
-    fn span(&self) -> &Span;
+#[derive(Debug)]
+pub enum Expr {
+    LiteralExpr(LiteralExpr),
+    VarExpr(VarExpr),
+    FunExpr(FunExpr),
+    ApplicationExpr(ApplicationExpr),
+    PartialExpr(PartialExpr),
+    LetInExpr(LetInExpr),
+    BinOpExpr(BinOpExpr),
 }
 
+#[derive(Debug)]
 pub enum LiteralExpr {
     Integer(i32, Span),
 }
 
+#[derive(Debug)]
 pub struct VarExpr {
     pub id: Span,
 }
 
+#[derive(Debug)]
 pub enum FunExpr {
     Identifier(Span),
     Anonymous(AnonymousFunExpr),
 }
 
+#[derive(Debug)]
 pub struct AnonymousFunExpr {
     pub params: Vec<Span>,
-    pub body: Rc<dyn Expr>,
+    pub body: Box<Expr>,
     pub captures: Vec<String>,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct ApplicationExpr {
-    pub fun: Rc<FunExpr>,
-    pub binds: Vec<(String, Rc<dyn Expr>)>,
+    pub fun: Box<FunExpr>,
+    pub binds: Vec<(String, Box<Expr>)>,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct PartialExpr {
-    pub fun: Rc<FunExpr>,
-    pub binds: Vec<(String, Rc<dyn Expr>)>,
+    pub fun: Box<FunExpr>,
+    pub binds: Vec<(String, Box<Expr>)>,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct LetInExpr {
-    pub bind: (Span, Rc<dyn Expr>),
-    pub expr: Rc<dyn Expr>,
+    pub bind: (Span, Box<Expr>),
+    pub expr: Box<Expr>,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct BinOpExpr {
     pub op: Operator,
-    pub lhs: Rc<dyn Expr>,
-    pub rhs: Rc<dyn Expr>,
+    pub lhs: Box<Expr>,
+    pub rhs: Box<Expr>,
     pub span: Span,
 }
 
-impl Expr for LiteralExpr {}
-
-impl Expr for VarExpr {}
-
-impl Expr for FunExpr {}
-
-impl Expr for AnonymousFunExpr {}
-
-impl Expr for ApplicationExpr {}
-
-impl Expr for PartialExpr {}
-
-impl Expr for LetInExpr {}
-
-impl Expr for BinOpExpr {}
-
+#[derive(Debug)]
 pub enum Operator {
     Plus,
     Minus,
@@ -125,55 +123,43 @@ impl Ast {
     }
 }
 
-impl Spanned for LiteralExpr {
-    fn span(&self) -> &Span {
+impl Expr {
+    pub fn span(&self) -> &Span {
         match self {
-            LiteralExpr::Integer(_, span) => span,
+            Expr::LiteralExpr(LiteralExpr::Integer(_, span)) => span,
+            Expr::VarExpr(VarExpr { id }) => id,
+            Expr::FunExpr(FunExpr::Identifier(span)) => span,
+            Expr::FunExpr(FunExpr::Anonymous(AnonymousFunExpr { span, .. })) => span,
+            Expr::ApplicationExpr(ApplicationExpr { span, .. }) => span,
+            Expr::PartialExpr(PartialExpr { span, .. }) => span,
+            Expr::LetInExpr(LetInExpr { span, .. }) => span,
+            Expr::BinOpExpr(BinOpExpr { span, .. }) => span,
         }
     }
-}
 
-impl Spanned for VarExpr {
-    fn span(&self) -> &Span {
-        &self.id
+    pub fn integer(value: i32, span: Span) -> Self {
+        Self::LiteralExpr(LiteralExpr::Integer(value, span.clone()))
     }
-}
 
-impl Spanned for FunExpr {
-    fn span(&self) -> &Span {
-        match self {
-            FunExpr::Identifier(span) => span,
-            FunExpr::Anonymous(anonym) => anonym.span(),
-        }
+    pub fn var(span: Span) -> Self {
+        Self::VarExpr(VarExpr { id: span })
     }
-}
 
-impl Spanned for AnonymousFunExpr {
-    fn span(&self) -> &Span {
-        &self.span
+    pub fn anonymous_fun(
+        params: Vec<Span>,
+        body: Box<Expr>,
+        captures: Vec<String>,
+        span: Span,
+    ) -> Self {
+        Self::FunExpr(FunExpr::Anonymous(AnonymousFunExpr {
+            params,
+            body,
+            captures,
+            span,
+        }))
     }
-}
 
-impl Spanned for ApplicationExpr {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl Spanned for PartialExpr {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl Spanned for LetInExpr {
-    fn span(&self) -> &Span {
-        &self.span
-    }
-}
-
-impl Spanned for BinOpExpr {
-    fn span(&self) -> &Span {
-        &self.span
+    pub fn binop(op: Operator, lhs: Box<Expr>, rhs: Box<Expr>, span: Span) -> Self {
+        Self::BinOpExpr(BinOpExpr { op, lhs, rhs, span })
     }
 }

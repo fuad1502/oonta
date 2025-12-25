@@ -1,7 +1,5 @@
-use std::rc::Rc;
-
 use crate::{
-    ast::{AnonymousFunExpr, Ast, BinOpExpr, Bind, Expr, FunExpr, LiteralExpr, Operator, VarExpr},
+    ast::{Ast, Bind, Expr, Operator},
     lexer::Lexer,
     symbol::{NonTerminal, NonTerminalClass, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -100,17 +98,14 @@ impl<'a> AstBuilder<'a> {
         Ok(extract_span(&extract_components(symbol)[0]).clone())
     }
 
-    fn visit_expr(&mut self, symbol: &Symbol) -> Result<Rc<dyn Expr>, String> {
+    fn visit_expr(&mut self, symbol: &Symbol) -> Result<Box<Expr>, String> {
         match symbol {
             Symbol::NonTerminal(non_terminal) => self.visit_non_terminal_expr(non_terminal),
             Symbol::Terminal(terminal) => self.visit_terminal_expr(terminal),
         }
     }
 
-    fn visit_non_terminal_expr(
-        &mut self,
-        non_terminal: &NonTerminal,
-    ) -> Result<Rc<dyn Expr>, String> {
+    fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Result<Box<Expr>, String> {
         match non_terminal.rule.number {
             10..16 | 26 => self.visit_expr(&non_terminal.rule.components[0]),
             20..23 => self.visit_binop_expr(&non_terminal.rule.components),
@@ -118,7 +113,7 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn visit_binop_expr(&mut self, components: &[Symbol]) -> Result<Rc<dyn Expr>, String> {
+    fn visit_binop_expr(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
         let lhs = self.visit_expr(&components[0])?;
         let op = match extract_terminal_class(&components[1]) {
             TerminalClass::Plus => Operator::Plus,
@@ -129,10 +124,10 @@ impl<'a> AstBuilder<'a> {
         };
         let rhs = self.visit_expr(&components[2])?;
         let span = Span::new(lhs.span().start_pos(), rhs.span().end_pos());
-        Ok(Rc::new(BinOpExpr { op, lhs, rhs, span }))
+        Ok(Box::new(Expr::binop(op, lhs, rhs, span)))
     }
 
-    fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Result<Rc<dyn Expr>, String> {
+    fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Result<Box<Expr>, String> {
         match terminal.class() {
             TerminalClass::Number => Ok(self.new_integer_expr(terminal)),
             TerminalClass::Identifier => Ok(self.new_var_expr(terminal)),
@@ -153,17 +148,12 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn new_anonymous_fun_expr(&mut self, body: Rc<dyn Expr>) -> Rc<dyn Expr> {
+    fn new_anonymous_fun_expr(&mut self, body: Box<Expr>) -> Box<Expr> {
         let closure_ctx = self.pop_closure_ctx();
         let params = closure_ctx.params;
         let captures = closure_ctx.captures;
         let span = body.span().clone();
-        Rc::new(FunExpr::Anonymous(AnonymousFunExpr {
-            params,
-            body,
-            captures,
-            span,
-        }))
+        Box::new(Expr::anonymous_fun(params, body, captures, span))
     }
 
     fn pop_closure_ctx(&mut self) -> ClosureCtx {
@@ -175,14 +165,14 @@ impl<'a> AstBuilder<'a> {
         current_closure_ctx
     }
 
-    fn new_integer_expr(&self, terminal: &Terminal) -> Rc<dyn Expr> {
+    fn new_integer_expr(&self, terminal: &Terminal) -> Box<Expr> {
         let lexeme = self.lexer.get_lexeme(terminal);
         let span = terminal.span().clone();
         let value = lexeme.parse().unwrap();
-        Rc::new(LiteralExpr::Integer(value, span))
+        Box::new(Expr::integer(value, span))
     }
 
-    fn new_var_expr(&mut self, terminal: &Terminal) -> Rc<dyn Expr> {
+    fn new_var_expr(&mut self, terminal: &Terminal) -> Box<Expr> {
         let name = self.lexer.get_lexeme(terminal);
         if let Some(ctx) = &mut self.current_closure_ctx {
             if !ctx.is_name_in_params(name, self.lexer) {
@@ -190,7 +180,7 @@ impl<'a> AstBuilder<'a> {
             }
         }
         let id = terminal.span().clone();
-        Rc::new(VarExpr { id })
+        Box::new(Expr::var(id))
     }
 }
 
