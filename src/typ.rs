@@ -106,16 +106,30 @@ impl<'a> TypeResolver<'a> {
         let ret_typ = self.new_var();
 
         let inferred_typ = self.infer_type(&application_expr.fun);
-        let inferred_fun_typs = deconstruct_fun_typ(inferred_typ);
-
-        let (inferred_fun_params, inferred_fun_ret) = inferred_fun_typs.split_at(arg_typs.len());
-        for (typ_a, typ_b) in arg_typs.into_iter().zip(inferred_fun_params) {
-            unify_typ(typ_a, typ_b.clone());
+        let unboxed_inferred_typ = inferred_typ.borrow().clone();
+        match unboxed_inferred_typ {
+            Type::Variable(Variable::Unbound(_)) => {
+                arg_typs.push(ret_typ.clone());
+                let fun_typ = Rc::new(RefCell::new(Type::Fun(arg_typs)));
+                unify_typ(inferred_typ, fun_typ);
+                ret_typ
+            }
+            Type::Fun(inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
+                let (inferred_fun_params, inferred_fun_ret) =
+                    inferred_fun_typs.split_at(arg_typs.len());
+                arg_typs
+                    .into_iter()
+                    .zip(inferred_fun_params)
+                    .for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b.clone()));
+                let inferred_fun_ret = Rc::new(RefCell::new(Type::Fun(inferred_fun_ret.to_vec())));
+                unify_typ(inferred_fun_ret, ret_typ.clone());
+                ret_typ
+            }
+            Type::Fun(_) => {
+                todo!()
+            }
+            _ => unreachable!(),
         }
-        let typ_ret = Rc::new(RefCell::new(Type::Fun(inferred_fun_ret.to_vec())));
-        unify_typ(typ_ret, ret_typ.clone());
-
-        ret_typ
     }
 
     fn infer_var_expr(&mut self, id: &Span) -> Rc<RefCell<Type>> {
@@ -294,14 +308,6 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
         }
         Type::Variable(Variable::Unbound(_)) => vec![typ.clone()],
         Type::Primitive(_) | Type::Variable(Variable::Link(_)) => vec![],
-    }
-}
-
-fn deconstruct_fun_typ(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
-    if let Type::Fun(typs) = typ.borrow().clone() {
-        typs
-    } else {
-        panic!("deconstruct_fun_typ should only be call on Function types")
     }
 }
 
