@@ -22,6 +22,7 @@ pub fn compile(file_path: &Path) -> Result<(), String> {
     let cst_root = parse(&mut lexer)?;
     cst_root.pretty_print(&lexer, 0);
     let ast = build_ast(&lexer, &cst_root)?;
+    dbg!(&ast);
     let ctx = resolve_types(&lexer, ast)?;
     dbg!(ctx);
     Ok(())

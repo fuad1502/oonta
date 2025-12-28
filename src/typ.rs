@@ -78,7 +78,6 @@ impl<'a> TypeResolver<'a> {
             }
             Expr::Application(application_expr) => todo!(),
             Expr::BinOp(bin_op_expr) => self.infer_binop_expr(bin_op_expr),
-            Expr::Partial(partial_expr) => todo!(),
             Expr::LetIn(let_in_expr) => todo!(),
         }
     }

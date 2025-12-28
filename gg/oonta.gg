@@ -33,7 +33,7 @@ LetIn = Let Identifier Eq Expr In Expr;
 
 BinOp = Expr Plus Expr | Expr Minus Expr | Expr Star Expr | Expr Slash Expr;
 
-Application = Application Expr | Identifier Expr;
+Application = Application Expr | Identifier Expr | LeftParen AnonymousFun RightParen Expr;
 
 Literal = Number;
 

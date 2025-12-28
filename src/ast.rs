@@ -13,7 +13,7 @@ use crate::symbol::Span;
 //
 // let addthree = add 3
 // Bind("addthree",
-//     PartialExpr(
+//     ApplicationExpr(
 //         FunExpr::Identifier("add"),
 //         [("a", LiteralExpr(3))]
 //     )
@@ -45,7 +45,6 @@ pub enum Expr {
     Var(VarExpr),
     Fun(FunExpr),
     Application(ApplicationExpr),
-    Partial(PartialExpr),
     LetIn(LetInExpr),
     BinOp(BinOpExpr),
 }
@@ -77,14 +76,7 @@ pub struct AnonymousFunExpr {
 #[derive(Debug)]
 pub struct ApplicationExpr {
     pub fun: Box<FunExpr>,
-    pub binds: Vec<(String, Box<Expr>)>,
-    pub span: Span,
-}
-
-#[derive(Debug)]
-pub struct PartialExpr {
-    pub fun: Box<FunExpr>,
-    pub binds: Vec<(String, Box<Expr>)>,
+    pub binds: Vec<Expr>,
     pub span: Span,
 }
 
@@ -131,7 +123,6 @@ impl Expr {
             Expr::Fun(FunExpr::Identifier(span)) => span,
             Expr::Fun(FunExpr::Anonymous(AnonymousFunExpr { span, .. })) => span,
             Expr::Application(ApplicationExpr { span, .. }) => span,
-            Expr::Partial(PartialExpr { span, .. }) => span,
             Expr::LetIn(LetInExpr { span, .. }) => span,
             Expr::BinOp(BinOpExpr { span, .. }) => span,
         }

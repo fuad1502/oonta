@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Ast, Bind, Expr, Operator},
+    ast::{ApplicationExpr, Ast, Bind, Expr, FunExpr, Operator},
     lexer::Lexer,
     symbol::{NonTerminal, NonTerminalClass, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -107,9 +107,37 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Result<Box<Expr>, String> {
         match non_terminal.rule.number {
-            10..16 | 26 => self.visit_expr(&non_terminal.rule.components[0]),
-            20..23 => self.visit_binop_expr(&non_terminal.rule.components),
+            10..16 | 27 => self.visit_expr(&non_terminal.rule.components[0]),
+            20..=23 => self.visit_binop_expr(&non_terminal.rule.components),
+            24 => self.visit_append_application(&non_terminal.rule.components),
+            25 => self.visit_application(&non_terminal.rule.components),
+            26 => self.visit_anon_application(&non_terminal.rule.components),
             _ => unreachable!(),
+        }
+    }
+
+    fn visit_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
+        let fun = self.visit_expr(&components[0])?;
+        let arg = self.visit_expr(&components[1])?;
+        Ok(self.new_application_expr(*fun, *arg))
+    }
+
+    fn visit_anon_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
+        let fun = self.visit_expr(&components[1])?;
+        let arg = self.visit_expr(&components[3])?;
+        Ok(self.new_application_expr(*fun, *arg))
+    }
+
+    fn visit_append_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
+        let app = self.visit_expr(&components[0])?;
+        let arg = self.visit_expr(&components[1])?;
+        if let Expr::Application(mut app_expr) = *app {
+            let span = Span::new(app_expr.span.start_pos(), arg.span().end_pos());
+            app_expr.span = span;
+            app_expr.binds.push(*arg);
+            Ok(Box::new(Expr::Application(app_expr)))
+        } else {
+            unreachable!()
         }
     }
 
@@ -135,19 +163,6 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn push_closure_ctx(&mut self, params: Vec<Span>) {
-        match self.current_closure_ctx {
-            Some(_) => todo!(),
-            None => {
-                _ = self.current_closure_ctx.insert(ClosureCtx {
-                    parent: None,
-                    params,
-                    captures: vec![],
-                })
-            }
-        }
-    }
-
     fn new_anonymous_fun_expr(&mut self, body: Box<Expr>) -> Box<Expr> {
         let closure_ctx = self.pop_closure_ctx();
         let params = closure_ctx.params;
@@ -156,12 +171,19 @@ impl<'a> AstBuilder<'a> {
         Box::new(Expr::anonymous_fun(params, body, captures, span))
     }
 
-    fn pop_closure_ctx(&mut self) -> ClosureCtx {
-        let mut current_closure_ctx = self.current_closure_ctx.take().unwrap();
-        if let Some(parent) = current_closure_ctx.parent.take() {
-            self.current_closure_ctx = Some(*parent);
+    fn new_application_expr(&mut self, fun: Expr, arg: Expr) -> Box<Expr> {
+        let span = Span::new(fun.span().start_pos(), arg.span().end_pos());
+        let fun = match fun {
+            Expr::Var(var_expr) => Box::new(FunExpr::Identifier(var_expr.id)),
+            Expr::Fun(fun_expr) => Box::new(fun_expr),
+            _ => unreachable!(),
         };
-        current_closure_ctx
+        let app_expr = ApplicationExpr {
+            fun,
+            binds: vec![arg],
+            span,
+        };
+        Box::new(Expr::Application(app_expr))
     }
 
     fn new_integer_expr(&self, terminal: &Terminal) -> Box<Expr> {
@@ -180,6 +202,27 @@ impl<'a> AstBuilder<'a> {
         }
         let id = terminal.span().clone();
         Box::new(Expr::var(id))
+    }
+
+    fn push_closure_ctx(&mut self, params: Vec<Span>) {
+        match self.current_closure_ctx {
+            Some(_) => todo!(),
+            None => {
+                _ = self.current_closure_ctx.insert(ClosureCtx {
+                    parent: None,
+                    params,
+                    captures: vec![],
+                })
+            }
+        }
+    }
+
+    fn pop_closure_ctx(&mut self) -> ClosureCtx {
+        let mut current_closure_ctx = self.current_closure_ctx.take().unwrap();
+        if let Some(parent) = current_closure_ctx.parent.take() {
+            self.current_closure_ctx = Some(*parent);
+        };
+        current_closure_ctx
     }
 }
 
