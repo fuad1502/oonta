@@ -174,12 +174,12 @@ impl<'a> AstBuilder<'a> {
     fn new_application_expr(&mut self, fun: Expr, arg: Expr) -> Box<Expr> {
         let span = Span::new(fun.span().start_pos(), arg.span().end_pos());
         let fun = match fun {
-            Expr::Var(var_expr) => Box::new(FunExpr::Identifier(var_expr.id)),
-            Expr::Fun(fun_expr) => Box::new(fun_expr),
+            Expr::Var(var_expr) => FunExpr::Identifier(var_expr.id),
+            Expr::Fun(fun_expr) => fun_expr,
             _ => unreachable!(),
         };
         let app_expr = ApplicationExpr {
-            fun,
+            fun: Box::new(Expr::Fun(fun)),
             binds: vec![arg],
             span,
         };

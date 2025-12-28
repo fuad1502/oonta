@@ -5,8 +5,9 @@ use std::{
 };
 
 use crate::{
-    ast::{AnonymousFunExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
+    ast::{AnonymousFunExpr, ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
     lexer::Lexer,
+    symbol::Span,
 };
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -68,15 +69,15 @@ impl<'a> TypeResolver<'a> {
     fn infer_type(&mut self, expr: &Expr) -> Rc<RefCell<Type>> {
         match expr {
             Expr::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
-            Expr::Var(var_expr) => self.infer_var_expr(var_expr),
-            Expr::Fun(FunExpr::Identifier(_)) => todo!(),
+            Expr::Var(var_expr) => self.infer_var_expr(&var_expr.id),
+            Expr::Fun(FunExpr::Identifier(id)) => self.infer_var_expr(id),
             Expr::Fun(FunExpr::Anonymous(anon_fun_expr)) => {
                 self.push_curr_context(expr as *const Expr);
                 let typ = self.infer_anon_fun_expr(anon_fun_expr);
                 self.pop_curr_context();
                 typ
             }
-            Expr::Application(application_expr) => todo!(),
+            Expr::Application(application_expr) => self.infer_application_expr(application_expr),
             Expr::BinOp(bin_op_expr) => self.infer_binop_expr(bin_op_expr),
             Expr::LetIn(let_in_expr) => todo!(),
         }
@@ -97,8 +98,28 @@ impl<'a> TypeResolver<'a> {
         Rc::new(RefCell::new(Type::Fun(fun_typ)))
     }
 
-    fn infer_var_expr(&mut self, var_expr: &VarExpr) -> Rc<RefCell<Type>> {
-        let name = self.lexer.str_from_span(&var_expr.id);
+    fn infer_application_expr(&mut self, application_expr: &ApplicationExpr) -> Rc<RefCell<Type>> {
+        let mut arg_typs = vec![];
+        for arg in &application_expr.binds {
+            arg_typs.push(self.infer_type(arg));
+        }
+        let ret_typ = self.new_var();
+
+        let inferred_typ = self.infer_type(&application_expr.fun);
+        let inferred_fun_typs = deconstruct_fun_typ(inferred_typ);
+
+        let (inferred_fun_params, inferred_fun_ret) = inferred_fun_typs.split_at(arg_typs.len());
+        for (typ_a, typ_b) in arg_typs.into_iter().zip(inferred_fun_params) {
+            unify_typ(typ_a, typ_b.clone());
+        }
+        let typ_ret = Rc::new(RefCell::new(Type::Fun(inferred_fun_ret.to_vec())));
+        unify_typ(typ_ret, ret_typ.clone());
+
+        ret_typ
+    }
+
+    fn infer_var_expr(&mut self, id: &Span) -> Rc<RefCell<Type>> {
+        let name = self.lexer.str_from_span(id);
         if let Some(typ) = self.get_from_local_ctx(name) {
             return typ;
         }
@@ -273,6 +294,14 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
         }
         Type::Variable(Variable::Unbound(_)) => vec![typ.clone()],
         Type::Primitive(_) | Type::Variable(Variable::Link(_)) => vec![],
+    }
+}
+
+fn deconstruct_fun_typ(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
+    if let Type::Fun(typs) = typ.borrow().clone() {
+        typs
+    } else {
+        panic!("deconstruct_fun_typ should only be call on Function types")
     }
 }
 

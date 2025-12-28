@@ -75,7 +75,7 @@ pub struct AnonymousFunExpr {
 
 #[derive(Debug)]
 pub struct ApplicationExpr {
-    pub fun: Box<FunExpr>,
+    pub fun: Box<Expr>,
     pub binds: Vec<Expr>,
     pub span: Span,
 }
