@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    ast::{AnonymousFunExpr, ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
+    ast::{AnonymousFunExpr, ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr},
     lexer::Lexer,
     symbol::Span,
 };
