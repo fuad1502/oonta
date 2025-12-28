@@ -158,9 +158,8 @@ impl<'a> AstBuilder<'a> {
 
     fn pop_closure_ctx(&mut self) -> ClosureCtx {
         let mut current_closure_ctx = self.current_closure_ctx.take().unwrap();
-        match current_closure_ctx.parent.take() {
-            Some(parent) => _ = self.current_closure_ctx.insert(*parent),
-            None => (),
+        if let Some(parent) = current_closure_ctx.parent.take() {
+            self.current_closure_ctx = Some(*parent);
         };
         current_closure_ctx
     }
@@ -174,10 +173,10 @@ impl<'a> AstBuilder<'a> {
 
     fn new_var_expr(&mut self, terminal: &Terminal) -> Box<Expr> {
         let name = self.lexer.get_lexeme(terminal);
-        if let Some(ctx) = &mut self.current_closure_ctx {
-            if !ctx.is_name_in_params(name, self.lexer) {
-                ctx.captures.push(name.to_string());
-            }
+        if let Some(ctx) = &mut self.current_closure_ctx
+            && !ctx.is_name_in_params(name, self.lexer)
+        {
+            ctx.captures.push(name.to_string());
         }
         let id = terminal.span().clone();
         Box::new(Expr::var(id))

@@ -41,13 +41,13 @@ pub struct Bind {
 
 #[derive(Debug)]
 pub enum Expr {
-    LiteralExpr(LiteralExpr),
-    VarExpr(VarExpr),
-    FunExpr(FunExpr),
-    ApplicationExpr(ApplicationExpr),
-    PartialExpr(PartialExpr),
-    LetInExpr(LetInExpr),
-    BinOpExpr(BinOpExpr),
+    Literal(LiteralExpr),
+    Var(VarExpr),
+    Fun(FunExpr),
+    Application(ApplicationExpr),
+    Partial(PartialExpr),
+    LetIn(LetInExpr),
+    BinOp(BinOpExpr),
 }
 
 #[derive(Debug)]
@@ -126,23 +126,23 @@ impl Ast {
 impl Expr {
     pub fn span(&self) -> &Span {
         match self {
-            Expr::LiteralExpr(LiteralExpr::Integer(_, span)) => span,
-            Expr::VarExpr(VarExpr { id }) => id,
-            Expr::FunExpr(FunExpr::Identifier(span)) => span,
-            Expr::FunExpr(FunExpr::Anonymous(AnonymousFunExpr { span, .. })) => span,
-            Expr::ApplicationExpr(ApplicationExpr { span, .. }) => span,
-            Expr::PartialExpr(PartialExpr { span, .. }) => span,
-            Expr::LetInExpr(LetInExpr { span, .. }) => span,
-            Expr::BinOpExpr(BinOpExpr { span, .. }) => span,
+            Expr::Literal(LiteralExpr::Integer(_, span)) => span,
+            Expr::Var(VarExpr { id }) => id,
+            Expr::Fun(FunExpr::Identifier(span)) => span,
+            Expr::Fun(FunExpr::Anonymous(AnonymousFunExpr { span, .. })) => span,
+            Expr::Application(ApplicationExpr { span, .. }) => span,
+            Expr::Partial(PartialExpr { span, .. }) => span,
+            Expr::LetIn(LetInExpr { span, .. }) => span,
+            Expr::BinOp(BinOpExpr { span, .. }) => span,
         }
     }
 
     pub fn integer(value: i32, span: Span) -> Self {
-        Self::LiteralExpr(LiteralExpr::Integer(value, span.clone()))
+        Self::Literal(LiteralExpr::Integer(value, span.clone()))
     }
 
     pub fn var(span: Span) -> Self {
-        Self::VarExpr(VarExpr { id: span })
+        Self::Var(VarExpr { id: span })
     }
 
     pub fn anonymous_fun(
@@ -151,7 +151,7 @@ impl Expr {
         captures: Vec<String>,
         span: Span,
     ) -> Self {
-        Self::FunExpr(FunExpr::Anonymous(AnonymousFunExpr {
+        Self::Fun(FunExpr::Anonymous(AnonymousFunExpr {
             params,
             body,
             captures,
@@ -160,6 +160,6 @@ impl Expr {
     }
 
     pub fn binop(op: Operator, lhs: Box<Expr>, rhs: Box<Expr>, span: Span) -> Self {
-        Self::BinOpExpr(BinOpExpr { op, lhs, rhs, span })
+        Self::BinOp(BinOpExpr { op, lhs, rhs, span })
     }
 }

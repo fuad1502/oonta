@@ -57,7 +57,7 @@ impl<'a> TypeResolver<'a> {
     pub fn resolve_types(mut self, ast: Ast) -> Result<Context, String> {
         for binding in ast.binds {
             self.var_id_in_local_ctx = 0;
-            let typ = self.infer_type(&*binding.expr);
+            let typ = self.infer_type(&binding.expr);
             let typ = rename(typ);
             let name = self.lexer.str_from_span(&binding.name);
             self.main_context.borrow_mut().insert(name, typ);
@@ -67,19 +67,19 @@ impl<'a> TypeResolver<'a> {
 
     fn infer_type(&mut self, expr: &Expr) -> Rc<RefCell<Type>> {
         match expr {
-            Expr::LiteralExpr(literal_expr) => self.infer_literal_expr(literal_expr),
-            Expr::VarExpr(var_expr) => self.infer_var_expr(var_expr),
-            Expr::FunExpr(FunExpr::Identifier(_)) => todo!(),
-            Expr::FunExpr(FunExpr::Anonymous(anon_fun_expr)) => {
+            Expr::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
+            Expr::Var(var_expr) => self.infer_var_expr(var_expr),
+            Expr::Fun(FunExpr::Identifier(_)) => todo!(),
+            Expr::Fun(FunExpr::Anonymous(anon_fun_expr)) => {
                 self.push_curr_context(expr as *const Expr);
                 let typ = self.infer_anon_fun_expr(anon_fun_expr);
                 self.pop_curr_context();
                 typ
             }
-            Expr::ApplicationExpr(application_expr) => todo!(),
-            Expr::BinOpExpr(bin_op_expr) => self.infer_binop_expr(bin_op_expr),
-            Expr::PartialExpr(partial_expr) => todo!(),
-            Expr::LetInExpr(let_in_expr) => todo!(),
+            Expr::Application(application_expr) => todo!(),
+            Expr::BinOp(bin_op_expr) => self.infer_binop_expr(bin_op_expr),
+            Expr::Partial(partial_expr) => todo!(),
+            Expr::LetIn(let_in_expr) => todo!(),
         }
     }
 
@@ -196,17 +196,14 @@ impl<'a> TypeResolver<'a> {
     }
 
     fn pop_curr_context(&mut self) {
-        match self.curr_context.take() {
-            Some(curr_context) => {
-                if let Some(parent) = &curr_context.borrow().parent {
-                    let parent = parent.upgrade().unwrap();
-                    self.curr_context = Some(parent);
-                } else {
-                    self.save_local_context();
-                    self.curr_context = None;
-                }
+        if let Some(curr_context) = self.curr_context.take() {
+            if let Some(parent) = &curr_context.borrow().parent {
+                let parent = parent.upgrade().unwrap();
+                self.curr_context = Some(parent);
+            } else {
+                self.save_local_context();
+                self.curr_context = None;
             }
-            None => (),
         }
     }
 
@@ -245,10 +242,10 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) {
 fn occurs(var: usize, in_typ: Rc<RefCell<Type>>) -> bool {
     let unbounds = gather_unbounds(in_typ);
     for unbound in unbounds {
-        if let Type::Variable(Variable::Unbound(v)) = *unbound.borrow() {
-            if var == v {
-                return true;
-            }
+        if let Type::Variable(Variable::Unbound(v)) = *unbound.borrow()
+            && var == v
+        {
+            return true;
         }
     }
     false

@@ -33,7 +33,7 @@ fn parse(lexer: &mut Lexer) -> Result<Symbol, String> {
 }
 
 fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Result<Ast, String> {
-    let mut ast_builder = AstBuilder::new(&lexer);
+    let mut ast_builder = AstBuilder::new(lexer);
     ast_builder.visit(cst_root)
 }
 
