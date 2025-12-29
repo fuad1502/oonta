@@ -33,14 +33,13 @@ LetIn = Let Identifier Eq Expr In Expr;
 
 BinOp = Expr Plus Expr | Expr Minus Expr | Expr Star Expr | Expr Slash Expr;
 
-Application = Application Expr | Identifier Expr | LeftParen AnonymousFun RightParen Expr;
+Application = Application Arg | Identifier Arg | Parenthesize Arg;
+
+Arg = Identifier | Literal | Parenthesize;
 
 Literal = Number;
 
 %PRIORITIES
-Expr(1)
-Expr(3)
-
 BinOp(3)
 BinOp(4)
 Star

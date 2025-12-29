@@ -107,11 +107,11 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Result<Box<Expr>, String> {
         match non_terminal.rule.number {
-            10..16 | 27 => self.visit_expr(&non_terminal.rule.components[0]),
+            10..=16 | 27..=30 => self.visit_expr(&non_terminal.rule.components[0]),
+            18 => self.visit_expr(&non_terminal.rule.components[1]),
             20..=23 => self.visit_binop_expr(&non_terminal.rule.components),
             24 => self.visit_append_application(&non_terminal.rule.components),
-            25 => self.visit_application(&non_terminal.rule.components),
-            26 => self.visit_anon_application(&non_terminal.rule.components),
+            25 | 26 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -119,12 +119,6 @@ impl<'a> AstBuilder<'a> {
     fn visit_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
         let fun = self.visit_expr(&components[0])?;
         let arg = self.visit_expr(&components[1])?;
-        Ok(self.new_application_expr(*fun, *arg))
-    }
-
-    fn visit_anon_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
-        let fun = self.visit_expr(&components[1])?;
-        let arg = self.visit_expr(&components[3])?;
         Ok(self.new_application_expr(*fun, *arg))
     }
 
@@ -173,13 +167,8 @@ impl<'a> AstBuilder<'a> {
 
     fn new_application_expr(&mut self, fun: Expr, arg: Expr) -> Box<Expr> {
         let span = Span::new(fun.span().start_pos(), arg.span().end_pos());
-        let fun = match fun {
-            Expr::Var(var_expr) => FunExpr::Identifier(var_expr.id),
-            Expr::Fun(fun_expr) => fun_expr,
-            _ => unreachable!(),
-        };
         let app_expr = ApplicationExpr {
-            fun: Box::new(Expr::Fun(fun)),
+            fun: Box::new(fun),
             binds: vec![arg],
             span,
         };
