@@ -1,5 +1,5 @@
 use crate::{
-    ast::{ApplicationExpr, Ast, Bind, Expr, FunExpr, LetInExpr, Operator},
+    ast::{ApplicationExpr, Ast, Bind, Expr, LetInExpr, Operator},
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -43,7 +43,8 @@ impl<'a> AstBuilder<'a> {
         let rule = extract_rule(symbol);
         match rule.number {
             3 => self.visit_var_bind(extract_components(&rule.components[0])),
-            4 => self.visit_fun_bind(extract_components(&rule.components[0])),
+            4 => self.visit_fun_bind(extract_components(&rule.components[0]), false),
+            5 => self.visit_fun_bind(extract_components(&rule.components[0]), true),
             _ => unreachable!(),
         }
     }
@@ -57,12 +58,22 @@ impl<'a> AstBuilder<'a> {
         Bind { name, expr, span }
     }
 
-    fn visit_fun_bind(&mut self, components: &[Symbol]) -> Bind {
-        let name = extract_span(&components[1]).clone();
-        let params = self.visit_params(&components[2]);
+    fn visit_fun_bind(&mut self, components: &[Symbol], recursive: bool) -> Bind {
+        let name_idx = if recursive { 2 } else { 1 };
+        let params_idx = if recursive { 3 } else { 2 };
+        let expr_idx = if recursive { 5 } else { 4 };
+
+        let name = extract_span(&components[name_idx]).clone();
+        let params = self.visit_params(&components[params_idx]);
         self.push_closure_ctx(params);
-        let expr = self.visit_expr(&components[4]);
-        let expr = self.new_anonymous_fun_expr(expr);
+        let expr = self.visit_expr(&components[expr_idx]);
+
+        let recursive_bind = if recursive {
+            Some(self.lexer.str_from_span(&name).to_string())
+        } else {
+            None
+        };
+        let expr = self.new_fun_expr(expr, recursive_bind);
         let start_pos = extract_span(&components[0]).start_pos();
         let end_pos = expr.span().end_pos();
         let span = Span::new(start_pos, end_pos);
@@ -78,13 +89,13 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Box<Expr> {
         match non_terminal.rule.number {
-            10..=16 | 27..=30 => self.visit_expr(&non_terminal.rule.components[0]),
-            17 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            18 => self.visit_expr(&non_terminal.rule.components[1]),
-            19 => self.visit_let_in_expr(&non_terminal.rule.components),
-            20..=23 => self.visit_binop_expr(&non_terminal.rule.components),
-            24 => self.visit_append_application(&non_terminal.rule.components),
-            25 | 26 => self.visit_application(&non_terminal.rule.components),
+            12..=18 | 29..=32 => self.visit_expr(&non_terminal.rule.components[0]),
+            19 => self.visit_anonymous_fun(&non_terminal.rule.components),
+            20 => self.visit_expr(&non_terminal.rule.components[1]),
+            21 => self.visit_let_in_expr(&non_terminal.rule.components),
+            22..=25 => self.visit_binop_expr(&non_terminal.rule.components),
+            26 => self.visit_append_application(&non_terminal.rule.components),
+            27 | 28 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -93,7 +104,7 @@ impl<'a> AstBuilder<'a> {
         let params = self.visit_params(&components[1]);
         self.push_closure_ctx(params);
         let expr = self.visit_expr(&components[3]);
-        self.new_anonymous_fun_expr(expr)
+        self.new_fun_expr(expr, None)
     }
 
     fn visit_let_in_expr(&mut self, components: &[Symbol]) -> Box<Expr> {
@@ -161,31 +172,31 @@ impl<'a> AstBuilder<'a> {
     fn visit_params(&self, symbol: &Symbol) -> Vec<Span> {
         let rule = extract_rule(symbol);
         match rule.number {
-            7 => {
+            9 => {
                 let mut param_list = self.visit_params(&rule.components[0]);
                 let param = self.visit_param(&rule.components[1]);
                 param_list.push(param);
                 param_list
             }
-            8 => vec![self.visit_param(&rule.components[0])],
+            10 => vec![self.visit_param(&rule.components[0])],
             _ => unreachable!(),
         }
     }
 
-    fn new_anonymous_fun_expr(&mut self, body: Box<Expr>) -> Box<Expr> {
+    fn new_fun_expr(&mut self, body: Box<Expr>, recursive_bind: Option<String>) -> Box<Expr> {
         let closure_ctx = self.pop_closure_ctx();
         let mut params = closure_ctx.params;
         let mut captures = closure_ctx.captures;
         let span = body.span().clone();
-        let body = if let Expr::Fun(FunExpr::Anonymous(mut anonymous_fun_expr)) = *body {
+        let body = if let Expr::Fun(mut fun_expr) = *body {
             // TODO: Also capture if the body is a let in expr with anonymous function as its body
-            params.append(&mut anonymous_fun_expr.params);
-            captures.append(&mut anonymous_fun_expr.captures);
-            anonymous_fun_expr.body
+            params.append(&mut fun_expr.params);
+            captures.append(&mut fun_expr.captures);
+            fun_expr.body
         } else {
             body
         };
-        Box::new(Expr::anonymous_fun(params, body, captures, span))
+        Box::new(Expr::fun(params, body, captures, recursive_bind, span))
     }
 
     fn new_application_expr(&mut self, fun: Expr, arg: Expr) -> Box<Expr> {

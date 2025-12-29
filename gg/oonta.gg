@@ -2,6 +2,7 @@
 Let("let")
 In("in")
 Fun("fun")
+Rec("rec")
 Eq("=")
 Arrow("->")
 Plus("+")
@@ -16,9 +17,10 @@ Identifier("\w\w*")
 %RULES
 StmtList = StmtList Decl | Decl;
 
-Decl = VarBind | FunBind;
+Decl = VarBind | FunBind | RecFunBind;
 VarBind = Let Identifier Eq Expr;
 FunBind = Let Identifier ParamList Eq Expr;
+RecFunBind = Let Rec Identifier ParamList Eq Expr;
 
 ParamList = ParamList Param | Param;
 Param = Identifier;
@@ -34,7 +36,6 @@ LetIn = Let Identifier Eq Expr In Expr;
 BinOp = Expr Plus Expr | Expr Minus Expr | Expr Star Expr | Expr Slash Expr;
 
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
-
 Arg = Identifier | Literal | Parenthesize;
 
 Literal = Number;

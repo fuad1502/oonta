@@ -9,3 +9,5 @@ let z =
     ((let x = 4 in
      fun y -> y + x) 3)
     x
+
+let rec f x = f (x - 1)

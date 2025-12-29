@@ -60,15 +60,11 @@ pub struct VarExpr {
 }
 
 #[derive(Debug)]
-pub enum FunExpr {
-    Anonymous(AnonymousFunExpr),
-}
-
-#[derive(Debug)]
-pub struct AnonymousFunExpr {
+pub struct FunExpr {
     pub params: Vec<Span>,
     pub body: Box<Expr>,
     pub captures: Vec<String>,
+    pub recursive_bind: Option<String>,
     pub span: Span,
 }
 
@@ -119,7 +115,7 @@ impl Expr {
         match self {
             Expr::Literal(LiteralExpr::Integer(_, span)) => span,
             Expr::Var(VarExpr { id }) => id,
-            Expr::Fun(FunExpr::Anonymous(AnonymousFunExpr { span, .. })) => span,
+            Expr::Fun(FunExpr { span, .. }) => span,
             Expr::Application(ApplicationExpr { span, .. }) => span,
             Expr::LetIn(LetInExpr { span, .. }) => span,
             Expr::BinOp(BinOpExpr { span, .. }) => span,
@@ -134,18 +130,20 @@ impl Expr {
         Self::Var(VarExpr { id: span })
     }
 
-    pub fn anonymous_fun(
+    pub fn fun(
         params: Vec<Span>,
         body: Box<Expr>,
         captures: Vec<String>,
+        recursive_bind: Option<String>,
         span: Span,
     ) -> Self {
-        Self::Fun(FunExpr::Anonymous(AnonymousFunExpr {
+        Self::Fun(FunExpr {
             params,
             body,
             captures,
+            recursive_bind,
             span,
-        }))
+        })
     }
 
     pub fn binop(op: Operator, lhs: Box<Expr>, rhs: Box<Expr>, span: Span) -> Self {

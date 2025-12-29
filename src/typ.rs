@@ -5,9 +5,7 @@ use std::{
 };
 
 use crate::{
-    ast::{
-        AnonymousFunExpr, ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
-    },
+    ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
     symbol::Span,
 };
@@ -72,9 +70,9 @@ impl<'a> TypeResolver<'a> {
         match expr {
             Expr::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
             Expr::Var(var_expr) => self.infer_var_expr(&var_expr.id),
-            Expr::Fun(FunExpr::Anonymous(anon_fun_expr)) => {
+            Expr::Fun(fun_expr) => {
                 self.push_curr_context(expr as *const Expr);
-                let typ = self.infer_anon_fun_expr(anon_fun_expr);
+                let typ = self.infer_fun_expr(fun_expr);
                 self.pop_curr_context();
                 typ
             }
@@ -89,9 +87,9 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    fn infer_anon_fun_expr(&mut self, anon_fun_expr: &AnonymousFunExpr) -> Rc<RefCell<Type>> {
+    fn infer_fun_expr(&mut self, fun_expr: &FunExpr) -> Rc<RefCell<Type>> {
         let mut fun_typ = vec![];
-        for param in &anon_fun_expr.params {
+        for param in &fun_expr.params {
             let name = self.lexer.str_from_span(param);
             let typ = self.new_var();
             fun_typ.push(typ.clone());
@@ -99,9 +97,16 @@ impl<'a> TypeResolver<'a> {
         }
         let ret_typ = self.new_var();
         fun_typ.push(ret_typ.clone());
-        let typ = self.infer_type(&anon_fun_expr.body);
-        unify_typ(typ, ret_typ);
-        Rc::new(RefCell::new(Type::Fun(fun_typ)))
+        let fun_typ = Rc::new(RefCell::new(Type::Fun(fun_typ)));
+        if let Some(name) = &fun_expr.recursive_bind {
+            self.insert_binding_to_local_ctx(name, fun_typ.clone());
+        }
+        let typ = self.infer_type(&fun_expr.body);
+        if let Some(name) = &fun_expr.recursive_bind {
+            self.remove_binding_from_local_ctx(name);
+        }
+        unify_typ(ret_typ, typ);
+        fun_typ
     }
 
     fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> Rc<RefCell<Type>> {
@@ -110,7 +115,7 @@ impl<'a> TypeResolver<'a> {
         self.insert_binding_to_local_ctx(name, typ);
         let ret_typ = self.new_var();
         let typ = self.infer_type(&let_in_expr.expr);
-        unify_typ(typ, ret_typ.clone());
+        unify_typ(ret_typ.clone(), typ);
         ret_typ
     }
 
@@ -137,22 +142,22 @@ impl<'a> TypeResolver<'a> {
             Type::Variable(Variable::Unbound(_)) => {
                 let mut fun_typ = arg_typs;
                 fun_typ.push(ret_typ.clone());
-                unify_typ(inferred_typ, Rc::new(RefCell::new(Type::Fun(fun_typ))));
+                unify_typ(Rc::new(RefCell::new(Type::Fun(fun_typ))), inferred_typ);
                 ret_typ
             }
-            Type::Fun(inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
-                let (inferred_fun_params, inferred_fun_ret) =
-                    inferred_fun_typs.split_at(arg_typs.len());
+            Type::Fun(mut inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
+                let mut inferred_fun_ret = inferred_fun_typs.split_off(arg_typs.len());
+                let inferred_fun_params = inferred_fun_typs;
                 arg_typs
                     .into_iter()
                     .zip(inferred_fun_params)
-                    .for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b.clone()));
+                    .for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b));
                 let inferred_fun_ret = if inferred_fun_ret.len() == 1 {
-                    inferred_fun_ret[0].clone()
+                    inferred_fun_ret.pop().unwrap()
                 } else {
-                    Rc::new(RefCell::new(Type::Fun(inferred_fun_ret.to_vec())))
+                    Rc::new(RefCell::new(Type::Fun(inferred_fun_ret)))
                 };
-                unify_typ(inferred_fun_ret, ret_typ.clone());
+                unify_typ(ret_typ.clone(), inferred_fun_ret);
                 ret_typ
             }
             Type::Fun(_) => {
@@ -181,12 +186,10 @@ impl<'a> TypeResolver<'a> {
             | crate::ast::Operator::Slash => {
                 let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Integer)));
                 let typ = self.infer_type(&bin_op_expr.lhs);
-                unify_typ(typ, int_typ.clone());
+                unify_typ(int_typ.clone(), typ);
                 let typ = self.infer_type(&bin_op_expr.rhs);
-                unify_typ(typ, int_typ.clone());
-                let typ = self.new_var();
-                unify_typ(typ.clone(), int_typ.clone());
-                typ
+                unify_typ(int_typ.clone(), typ);
+                int_typ
             }
         }
     }
@@ -202,6 +205,12 @@ impl<'a> TypeResolver<'a> {
     fn insert_binding_to_local_ctx(&mut self, name: &str, typ: Rc<RefCell<Type>>) {
         if let Some(context) = &self.curr_context {
             context.borrow_mut().insert(name, typ);
+        }
+    }
+
+    fn remove_binding_from_local_ctx(&mut self, name: &str) {
+        if let Some(context) = &self.curr_context {
+            context.borrow_mut().remove(name);
         }
     }
 
@@ -295,6 +304,8 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) {
             bind(typ_b, typ_a)
         }
         (Type::Primitive(prim_a), Type::Primitive(prim_b)) if prim_a == prim_b => (),
+        (Type::Variable(Variable::Unbound(var_a)), Type::Variable(Variable::Unbound(var_b)))
+            if var_a == var_b => {}
         (Type::Fun(typs_a), Type::Fun(typs_b)) if typs_a.len() == typs_b.len() => typs_a
             .into_iter()
             .zip(typs_b)
@@ -344,6 +355,10 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
 impl Context {
     fn insert(&mut self, name: &str, typ: Rc<RefCell<Type>>) {
         self.types.insert(name.to_string(), typ);
+    }
+
+    fn remove(&mut self, name: &str) {
+        self.types.remove(name);
     }
 
     fn get(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
