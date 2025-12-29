@@ -147,16 +147,16 @@ impl<'a> TypeResolver<'a> {
             }
             Type::Fun(mut inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
                 let mut inferred_fun_ret = inferred_fun_typs.split_off(arg_typs.len());
-                let inferred_fun_params = inferred_fun_typs;
-                arg_typs
-                    .into_iter()
-                    .zip(inferred_fun_params)
-                    .for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b));
                 let inferred_fun_ret = if inferred_fun_ret.len() == 1 {
                     inferred_fun_ret.pop().unwrap()
                 } else {
                     Rc::new(RefCell::new(Type::Fun(inferred_fun_ret)))
                 };
+                let inferred_fun_params = inferred_fun_typs;
+                arg_typs
+                    .into_iter()
+                    .zip(inferred_fun_params)
+                    .for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b));
                 unify_typ(ret_typ.clone(), inferred_fun_ret);
                 ret_typ
             }
