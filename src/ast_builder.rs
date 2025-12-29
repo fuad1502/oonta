@@ -1,7 +1,7 @@
 use crate::{
     ast::{ApplicationExpr, Ast, Bind, Expr, FunExpr, LetInExpr, Operator},
     lexer::Lexer,
-    symbol::{NonTerminal, NonTerminalClass, Rule, Span, Symbol, Terminal, TerminalClass},
+    symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
 };
 
 pub struct AstBuilder<'a> {
@@ -23,30 +23,23 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    pub fn visit(&mut self, cst_root: &Symbol) -> Result<Ast, String> {
-        if let Symbol::NonTerminal(NonTerminal {
-            class: NonTerminalClass::StmtList,
-            rule,
-        }) = cst_root
-        {
-            match rule.number {
-                1 => self.visit_append_ast(&rule.components),
-                2 => Ok(Ast::from(self.visit_bind(&rule.components[0])?)),
-                _ => unreachable!(),
-            }
-        } else {
-            Err("Expected StmtList as root symbol".to_string())
+    pub fn visit(&mut self, cst_root: &Symbol) -> Ast {
+        let rule = extract_rule(cst_root);
+        match rule.number {
+            1 => self.visit_append_ast(&rule.components),
+            2 => Ast::from(self.visit_bind(&rule.components[0])),
+            _ => unreachable!(),
         }
     }
 
-    fn visit_append_ast(&mut self, components: &[Symbol]) -> Result<Ast, String> {
-        let mut ast = self.visit(&components[0])?;
-        let new_bind = self.visit_bind(&components[1])?;
+    fn visit_append_ast(&mut self, components: &[Symbol]) -> Ast {
+        let mut ast = self.visit(&components[0]);
+        let new_bind = self.visit_bind(&components[1]);
         ast.append(new_bind);
-        Ok(ast)
+        ast
     }
 
-    fn visit_bind(&mut self, symbol: &Symbol) -> Result<Bind, String> {
+    fn visit_bind(&mut self, symbol: &Symbol) -> Bind {
         let rule = extract_rule(symbol);
         match rule.number {
             3 => self.visit_var_bind(extract_components(&rule.components[0])),
@@ -55,39 +48,35 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn visit_var_bind(&mut self, components: &[Symbol]) -> Result<Bind, String> {
+    fn visit_var_bind(&mut self, components: &[Symbol]) -> Bind {
         let name = extract_span(&components[1]).clone();
-        let expr = self.visit_expr(&components[3])?;
+        let expr = self.visit_expr(&components[3]);
         let start_pos = extract_span(&components[0]).start_pos();
         let end_pos = expr.span().end_pos();
         let span = Span::new(start_pos, end_pos);
-        Ok(Bind { name, expr, span })
+        Bind { name, expr, span }
     }
 
-    fn visit_fun_bind(&mut self, components: &[Symbol]) -> Result<Bind, String> {
+    fn visit_fun_bind(&mut self, components: &[Symbol]) -> Bind {
         let name = extract_span(&components[1]).clone();
-        let params = self.visit_params(&components[2])?;
+        let params = self.visit_params(&components[2]);
         self.push_closure_ctx(params);
-        let expr = self.visit_expr(&components[4])?;
-        let fun_expr = self.new_anonymous_fun_expr(expr);
+        let expr = self.visit_expr(&components[4]);
+        let expr = self.new_anonymous_fun_expr(expr);
         let start_pos = extract_span(&components[0]).start_pos();
-        let end_pos = fun_expr.span().end_pos();
+        let end_pos = expr.span().end_pos();
         let span = Span::new(start_pos, end_pos);
-        Ok(Bind {
-            name,
-            expr: fun_expr,
-            span,
-        })
+        Bind { name, expr, span }
     }
 
-    fn visit_expr(&mut self, symbol: &Symbol) -> Result<Box<Expr>, String> {
+    fn visit_expr(&mut self, symbol: &Symbol) -> Box<Expr> {
         match symbol {
             Symbol::NonTerminal(non_terminal) => self.visit_non_terminal_expr(non_terminal),
             Symbol::Terminal(terminal) => self.visit_terminal_expr(terminal),
         }
     }
 
-    fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Result<Box<Expr>, String> {
+    fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Box<Expr> {
         match non_terminal.rule.number {
             10..=16 | 27..=30 => self.visit_expr(&non_terminal.rule.components[0]),
             17 => self.visit_anonymous_fun(&non_terminal.rule.components),
@@ -100,18 +89,18 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
-        let params = self.visit_params(&components[1])?;
+    fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Box<Expr> {
+        let params = self.visit_params(&components[1]);
         self.push_closure_ctx(params);
-        let expr = self.visit_expr(&components[3])?;
-        Ok(self.new_anonymous_fun_expr(expr))
+        let expr = self.visit_expr(&components[3]);
+        self.new_anonymous_fun_expr(expr)
     }
 
-    fn visit_let_in_expr(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
+    fn visit_let_in_expr(&mut self, components: &[Symbol]) -> Box<Expr> {
         // TODO: Change LetInExpr to allow multiple binds and combine nested binds into one
         let bind_name = extract_span(&components[1]).clone();
-        let bind_expr = self.visit_expr(&components[3])?;
-        let expr = self.visit_expr(&components[5])?;
+        let bind_expr = self.visit_expr(&components[3]);
+        let expr = self.visit_expr(&components[5]);
         let span = Span::new(
             extract_span(&components[0]).start_pos(),
             expr.span().end_pos(),
@@ -121,30 +110,30 @@ impl<'a> AstBuilder<'a> {
             expr,
             span,
         });
-        Ok(Box::new(let_in_expr))
+        Box::new(let_in_expr)
     }
 
-    fn visit_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
-        let fun = self.visit_expr(&components[0])?;
-        let arg = self.visit_expr(&components[1])?;
-        Ok(self.new_application_expr(*fun, *arg))
+    fn visit_application(&mut self, components: &[Symbol]) -> Box<Expr> {
+        let fun = self.visit_expr(&components[0]);
+        let arg = self.visit_expr(&components[1]);
+        self.new_application_expr(*fun, *arg)
     }
 
-    fn visit_append_application(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
-        let app = self.visit_expr(&components[0])?;
-        let arg = self.visit_expr(&components[1])?;
+    fn visit_append_application(&mut self, components: &[Symbol]) -> Box<Expr> {
+        let app = self.visit_expr(&components[0]);
+        let arg = self.visit_expr(&components[1]);
         if let Expr::Application(mut app_expr) = *app {
             let span = Span::new(app_expr.span.start_pos(), arg.span().end_pos());
             app_expr.span = span;
             app_expr.binds.push(*arg);
-            Ok(Box::new(Expr::Application(app_expr)))
+            Box::new(Expr::Application(app_expr))
         } else {
             unreachable!()
         }
     }
 
-    fn visit_binop_expr(&mut self, components: &[Symbol]) -> Result<Box<Expr>, String> {
-        let lhs = self.visit_expr(&components[0])?;
+    fn visit_binop_expr(&mut self, components: &[Symbol]) -> Box<Expr> {
+        let lhs = self.visit_expr(&components[0]);
         let op = match extract_terminal_class(&components[1]) {
             TerminalClass::Plus => Operator::Plus,
             TerminalClass::Minus => Operator::Minus,
@@ -152,33 +141,33 @@ impl<'a> AstBuilder<'a> {
             TerminalClass::Slash => Operator::Slash,
             _ => unreachable!(),
         };
-        let rhs = self.visit_expr(&components[2])?;
+        let rhs = self.visit_expr(&components[2]);
         let span = Span::new(lhs.span().start_pos(), rhs.span().end_pos());
-        Ok(Box::new(Expr::binop(op, lhs, rhs, span)))
+        Box::new(Expr::binop(op, lhs, rhs, span))
     }
 
-    fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Result<Box<Expr>, String> {
+    fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Box<Expr> {
         match terminal.class() {
-            TerminalClass::Number => Ok(self.new_integer_expr(terminal)),
-            TerminalClass::Identifier => Ok(self.new_var_expr(terminal)),
+            TerminalClass::Number => self.new_integer_expr(terminal),
+            TerminalClass::Identifier => self.new_var_expr(terminal),
             _ => unreachable!(),
         }
     }
 
-    fn visit_param(&self, symbol: &Symbol) -> Result<Span, String> {
-        Ok(extract_span(&extract_components(symbol)[0]).clone())
+    fn visit_param(&self, symbol: &Symbol) -> Span {
+        extract_span(&extract_components(symbol)[0]).clone()
     }
 
-    fn visit_params(&self, symbol: &Symbol) -> Result<Vec<Span>, String> {
+    fn visit_params(&self, symbol: &Symbol) -> Vec<Span> {
         let rule = extract_rule(symbol);
         match rule.number {
             7 => {
-                let mut param_list = self.visit_params(&rule.components[0])?;
-                let param = self.visit_param(&rule.components[1])?;
+                let mut param_list = self.visit_params(&rule.components[0]);
+                let param = self.visit_param(&rule.components[1]);
                 param_list.push(param);
-                Ok(param_list)
+                param_list
             }
-            8 => Ok(vec![self.visit_param(&rule.components[0])?]),
+            8 => vec![self.visit_param(&rule.components[0])],
             _ => unreachable!(),
         }
     }

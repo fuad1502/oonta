@@ -21,7 +21,7 @@ pub fn compile(file_path: &Path) -> Result<(), String> {
     let mut lexer = Lexer::new(file_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     cst_root.pretty_print(&lexer, 0);
-    let ast = build_ast(&lexer, &cst_root)?;
+    let ast = build_ast(&lexer, &cst_root);
     dbg!(&ast);
     let ctx = resolve_types(&lexer, ast)?;
     dbg!(ctx);
@@ -33,7 +33,7 @@ fn parse(lexer: &mut Lexer) -> Result<Symbol, String> {
     parser.parse(lexer)
 }
 
-fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Result<Ast, String> {
+fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Ast {
     let mut ast_builder = AstBuilder::new(lexer);
     ast_builder.visit(cst_root)
 }
