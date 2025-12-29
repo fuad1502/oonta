@@ -1,3 +1,4 @@
+use core::fmt::Formatter;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -371,6 +372,44 @@ impl Context {
                 }
                 None => None,
             },
+        }
+    }
+}
+
+impl std::fmt::Display for Context {
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
+        for (name, typ) in &self.types {
+            writeln!(fmt, "{name}: {}", typ.borrow())?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            Type::Fun(typs) => {
+                write!(fmt, "(")?;
+                for (i, typ) in typs.iter().enumerate() {
+                    if i == typs.len() - 1 {
+                        write!(fmt, "{}", typ.borrow())?;
+                    } else {
+                        write!(fmt, "{} -> ", typ.borrow())?;
+                    }
+                }
+                write!(fmt, ")")
+            }
+            Type::Variable(Variable::Unbound(var)) => {
+                write!(
+                    fmt,
+                    "\'{}",
+                    char::from_u32(*var as u32 + 'a' as u32).unwrap()
+                )
+            }
+            Type::Primitive(primitive) => match primitive {
+                Primitive::Integer => write!(fmt, "int"),
+            },
+            Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
         }
     }
 }

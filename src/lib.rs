@@ -3,6 +3,7 @@ mod ast_builder;
 #[allow(unused)]
 mod lexer;
 mod parser;
+#[allow(unused)]
 mod symbol;
 mod typ;
 
@@ -20,11 +21,9 @@ use crate::{
 pub fn compile(file_path: &Path) -> Result<(), String> {
     let mut lexer = Lexer::new(file_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
-    cst_root.pretty_print(&lexer, 0);
     let ast = build_ast(&lexer, &cst_root);
-    dbg!(&ast);
     let ctx = resolve_types(&lexer, ast)?;
-    dbg!(ctx);
+    println!("{ctx}");
     Ok(())
 }
 
