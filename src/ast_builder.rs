@@ -217,10 +217,7 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn push_closure_ctx(&mut self, params: Vec<Span>) {
-        let parent = match self.current_closure_ctx.take() {
-            Some(parent) => Some(Box::new(parent)),
-            None => None,
-        };
+        let parent = self.current_closure_ctx.take().map(Box::new);
         self.current_closure_ctx = Some(ClosureCtx {
             parent,
             params,
