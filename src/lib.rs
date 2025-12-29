@@ -11,22 +11,22 @@ mod typ;
 use std::path::Path;
 
 use crate::{
-    ast::Ast,
+    ast::{Ast, Expr},
     ast_builder::AstBuilder,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
     parser::Parser,
     symbol::Symbol,
-    typ::{Context, TypeResolver},
+    typ::{TypeMap, TypeResolver},
 };
 
 pub fn compile(file_path: &Path) -> Result<(), String> {
     let mut lexer = Lexer::new(file_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     let ast = build_ast(&lexer, &cst_root);
-    let ctx = resolve_types(&lexer, &ast)?;
-    println!("{ctx}");
-    let _ = build_module(&ast, &ctx);
+    let type_map = resolve_types(&lexer, &ast)?;
+    print_global_types(&ast, &type_map, &lexer);
+    let _ = build_module(&ast, &type_map, &lexer);
     Ok(())
 }
 
@@ -40,12 +40,20 @@ fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Ast {
     ast_builder.visit(cst_root)
 }
 
-fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<Context, String> {
+fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, String> {
     let type_resolver = TypeResolver::new(lexer);
     type_resolver.resolve_types(ast)
 }
 
-fn build_module(ast: &Ast, context: &Context) -> Module {
-    let ir_builder = IRBuilder::new(ast, context);
-    ir_builder.build()
+fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
+    for binding in &ast.binds {
+        let name = lexer.str_from_span(&binding.name);
+        let typ = type_map.get(&*binding.expr as *const Expr).unwrap();
+        println!("{name}: {}", typ.borrow());
+    }
+}
+
+fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) -> Module {
+    let ir_builder = IRBuilder::new(type_map, lexer);
+    ir_builder.build(ast)
 }

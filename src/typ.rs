@@ -1,9 +1,7 @@
+use core::cell::RefCell;
 use core::fmt::Formatter;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::{Rc, Weak},
-};
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
 
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
@@ -29,14 +27,20 @@ pub enum Variable {
     Link(Rc<RefCell<Type>>),
 }
 
+#[derive(Default)]
+pub struct TypeMap {
+    map: HashMap<*const Expr, Rc<RefCell<Type>>>,
+}
+
 #[derive(Default, Debug)]
-pub struct Context {
+struct Context {
     types: HashMap<String, Rc<RefCell<Type>>>,
     parent: Option<Weak<RefCell<Context>>>,
     childrens: HashMap<*const Expr, Rc<RefCell<Context>>>,
 }
 
 pub struct TypeResolver<'a> {
+    type_map: TypeMap,
     main_context: Rc<RefCell<Context>>,
     local_context: Option<(*const Expr, Rc<RefCell<Context>>)>,
     curr_context: Option<Rc<RefCell<Context>>>,
@@ -48,6 +52,7 @@ impl<'a> TypeResolver<'a> {
     pub fn new(lexer: &'a Lexer) -> Self {
         let main_context = Rc::new(RefCell::new(Context::default()));
         Self {
+            type_map: TypeMap::default(),
             main_context,
             local_context: None,
             curr_context: None,
@@ -56,7 +61,7 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    pub fn resolve_types(mut self, ast: &Ast) -> Result<Context, String> {
+    pub fn resolve_types(mut self, ast: &Ast) -> Result<TypeMap, String> {
         for binding in &ast.binds {
             self.var_id_in_local_ctx = 0;
             let typ = self.infer_type(&binding.expr);
@@ -64,11 +69,11 @@ impl<'a> TypeResolver<'a> {
             let name = self.lexer.str_from_span(&binding.name);
             self.main_context.borrow_mut().insert(name, typ);
         }
-        Ok(self.main_context.take())
+        Ok(self.type_map)
     }
 
     fn infer_type(&mut self, expr: &Expr) -> Rc<RefCell<Type>> {
-        match expr {
+        let typ = match expr {
             Expr::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
             Expr::Var(var_expr) => self.infer_var_expr(&var_expr.id),
             Expr::Fun(fun_expr) => {
@@ -85,7 +90,9 @@ impl<'a> TypeResolver<'a> {
                 self.pop_curr_context();
                 typ
             }
-        }
+        };
+        self.type_map.insert(expr as *const Expr, typ.clone());
+        typ
     }
 
     fn infer_fun_expr(&mut self, fun_expr: &FunExpr) -> Rc<RefCell<Type>> {
@@ -353,35 +360,21 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
     }
 }
 
-impl Context {
-    fn insert(&mut self, name: &str, typ: Rc<RefCell<Type>>) {
-        self.types.insert(name.to_string(), typ);
-    }
-
-    fn remove(&mut self, name: &str) {
-        self.types.remove(name);
-    }
-
-    fn get(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
-        match self.types.get(name) {
-            Some(typ) => Some(typ.clone()),
-            None => match &self.parent {
-                Some(parent) => {
-                    let parent = parent.upgrade().unwrap();
-                    parent.borrow().get(name)
-                }
-                None => None,
-            },
+pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
+    let typ = typ.borrow().clone();
+    match typ {
+        Type::Fun(typs) => {
+            let typs = typs
+                .into_iter()
+                .map(normalize_typ)
+                .map(RefCell::new)
+                .map(Rc::new)
+                .collect();
+            Type::Fun(typs)
         }
-    }
-}
-
-impl std::fmt::Display for Context {
-    fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
-        for (name, typ) in &self.types {
-            writeln!(fmt, "{name}: {}", typ.borrow())?;
-        }
-        Ok(())
+        Type::Primitive(_) => typ,
+        Type::Variable(Variable::Link(typ)) => normalize_typ(typ),
+        Type::Variable(Variable::Unbound(_)) => typ,
     }
 }
 
@@ -410,6 +403,39 @@ impl std::fmt::Display for Type {
                 Primitive::Integer => write!(fmt, "int"),
             },
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
+        }
+    }
+}
+
+impl TypeMap {
+    pub fn get(&self, expr_ptr: *const Expr) -> Option<Rc<RefCell<Type>>> {
+        self.map.get(&expr_ptr).cloned()
+    }
+
+    fn insert(&mut self, expr_ptr: *const Expr, typ: Rc<RefCell<Type>>) {
+        self.map.insert(expr_ptr, typ);
+    }
+}
+
+impl Context {
+    fn insert(&mut self, name: &str, typ: Rc<RefCell<Type>>) {
+        self.types.insert(name.to_string(), typ);
+    }
+
+    fn remove(&mut self, name: &str) {
+        self.types.remove(name);
+    }
+
+    fn get(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
+        match self.types.get(name) {
+            Some(typ) => Some(typ.clone()),
+            None => match &self.parent {
+                Some(parent) => {
+                    let parent = parent.upgrade().unwrap();
+                    parent.borrow().get(name)
+                }
+                None => None,
+            },
         }
     }
 }
