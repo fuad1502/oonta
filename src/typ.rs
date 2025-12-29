@@ -5,7 +5,9 @@ use std::{
 };
 
 use crate::{
-    ast::{AnonymousFunExpr, ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr},
+    ast::{
+        AnonymousFunExpr, ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
+    },
     lexer::Lexer,
     symbol::Span,
 };
@@ -79,7 +81,12 @@ impl<'a> TypeResolver<'a> {
             }
             Expr::Application(application_expr) => self.infer_application_expr(application_expr),
             Expr::BinOp(bin_op_expr) => self.infer_binop_expr(bin_op_expr),
-            Expr::LetIn(let_in_expr) => todo!(),
+            Expr::LetIn(let_in_expr) => {
+                self.push_curr_context(expr as *const Expr);
+                let typ = self.infer_let_in_expr(let_in_expr);
+                self.pop_curr_context();
+                typ
+            }
         }
     }
 
@@ -98,20 +105,40 @@ impl<'a> TypeResolver<'a> {
         Rc::new(RefCell::new(Type::Fun(fun_typ)))
     }
 
+    fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> Rc<RefCell<Type>> {
+        let name = self.lexer.str_from_span(&let_in_expr.bind.0);
+        let typ = self.infer_type(&let_in_expr.bind.1);
+        self.insert_binding_to_local_ctx(name, typ);
+        let ret_typ = self.new_var();
+        let typ = self.infer_type(&let_in_expr.expr);
+        unify_typ(typ, ret_typ.clone());
+        ret_typ
+    }
+
     fn infer_application_expr(&mut self, application_expr: &ApplicationExpr) -> Rc<RefCell<Type>> {
         let mut arg_typs = vec![];
         for arg in &application_expr.binds {
             arg_typs.push(self.infer_type(arg));
         }
         let ret_typ = self.new_var();
-
         let inferred_typ = self.infer_type(&application_expr.fun);
+        Self::unify_application_typ(arg_typs, ret_typ, inferred_typ)
+    }
+
+    fn unify_application_typ(
+        arg_typs: Vec<Rc<RefCell<Type>>>,
+        ret_typ: Rc<RefCell<Type>>,
+        inferred_typ: Rc<RefCell<Type>>,
+    ) -> Rc<RefCell<Type>> {
         let unboxed_inferred_typ = inferred_typ.borrow().clone();
         match unboxed_inferred_typ {
+            Type::Variable(Variable::Link(typ)) => {
+                Self::unify_application_typ(arg_typs, ret_typ, typ)
+            }
             Type::Variable(Variable::Unbound(_)) => {
-                arg_typs.push(ret_typ.clone());
-                let fun_typ = Rc::new(RefCell::new(Type::Fun(arg_typs)));
-                unify_typ(inferred_typ, fun_typ);
+                let mut fun_typ = arg_typs;
+                fun_typ.push(ret_typ.clone());
+                unify_typ(inferred_typ, Rc::new(RefCell::new(Type::Fun(fun_typ))));
                 ret_typ
             }
             Type::Fun(inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
