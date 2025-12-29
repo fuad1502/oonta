@@ -61,7 +61,6 @@ pub struct VarExpr {
 
 #[derive(Debug)]
 pub enum FunExpr {
-    Identifier(Span),
     Anonymous(AnonymousFunExpr),
 }
 
@@ -120,7 +119,6 @@ impl Expr {
         match self {
             Expr::Literal(LiteralExpr::Integer(_, span)) => span,
             Expr::Var(VarExpr { id }) => id,
-            Expr::Fun(FunExpr::Identifier(span)) => span,
             Expr::Fun(FunExpr::Anonymous(AnonymousFunExpr { span, .. })) => span,
             Expr::Application(ApplicationExpr { span, .. }) => span,
             Expr::LetIn(LetInExpr { span, .. }) => span,

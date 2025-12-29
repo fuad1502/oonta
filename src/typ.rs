@@ -72,7 +72,6 @@ impl<'a> TypeResolver<'a> {
         match expr {
             Expr::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
             Expr::Var(var_expr) => self.infer_var_expr(&var_expr.id),
-            Expr::Fun(FunExpr::Identifier(id)) => self.infer_var_expr(id),
             Expr::Fun(FunExpr::Anonymous(anon_fun_expr)) => {
                 self.push_curr_context(expr as *const Expr);
                 let typ = self.infer_anon_fun_expr(anon_fun_expr);
