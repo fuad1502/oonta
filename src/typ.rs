@@ -121,14 +121,18 @@ impl<'a> TypeResolver<'a> {
                     .into_iter()
                     .zip(inferred_fun_params)
                     .for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b.clone()));
-                let inferred_fun_ret = Rc::new(RefCell::new(Type::Fun(inferred_fun_ret.to_vec())));
+                let inferred_fun_ret = if inferred_fun_ret.len() == 1 {
+                    inferred_fun_ret[0].clone()
+                } else {
+                    Rc::new(RefCell::new(Type::Fun(inferred_fun_ret.to_vec())))
+                };
                 unify_typ(inferred_fun_ret, ret_typ.clone());
                 ret_typ
             }
             Type::Fun(_) => {
                 todo!()
             }
-            _ => unreachable!(),
+            _ => todo!(),
         }
     }
 
