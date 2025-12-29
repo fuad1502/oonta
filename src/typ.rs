@@ -56,8 +56,8 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    pub fn resolve_types(mut self, ast: Ast) -> Result<Context, String> {
-        for binding in ast.binds {
+    pub fn resolve_types(mut self, ast: &Ast) -> Result<Context, String> {
+        for binding in &ast.binds {
             self.var_id_in_local_ctx = 0;
             let typ = self.infer_type(&binding.expr);
             let typ = rename(typ);
