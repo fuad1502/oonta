@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
 fn main() {
-    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let src_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("ocaml")
         .join("main.ml");
-    match oonta::compile(&file) {
+    let out_file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("main.ll");
+    match oonta::compile(&src_file, &out_file) {
         Ok(()) => (),
         Err(e) => eprintln!("{e}"),
     }

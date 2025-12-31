@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
-    ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
+    ir_builder::ir::{FunSignature, Function, GlobalVar, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, normalize_typ},
 };
@@ -48,6 +48,7 @@ impl<'a> IRBuilder<'a> {
             let expr_val = self.visit_expr(&binding.expr);
             self.curr_fun().store(expr_val, global_val);
         }
+        self.curr_fun().ret(IRValue::Void);
         self.module
     }
 
@@ -131,7 +132,7 @@ impl<'a> IRBuilder<'a> {
             let ptr = self.curr_fun().getelemptr(
                 closure_typ.clone(),
                 closure_ptr.clone(),
-                &[0, 0, i as i32],
+                &[0, 1, i as i32],
             );
             self.curr_fun().store(value, ptr);
         }
@@ -231,8 +232,8 @@ impl<'a> IRBuilder<'a> {
                 ret_typ
             }
         };
-        self.curr_fun()
-            .call("malloc".to_string(), ret_typ, vec![sz])
+        let fun_ptr = IRValue::Global("malloc".to_string(), IRType::Ptr);
+        self.curr_fun().call(fun_ptr, ret_typ, vec![sz])
     }
 }
 

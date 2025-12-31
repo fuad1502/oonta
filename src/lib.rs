@@ -8,7 +8,7 @@ mod parser;
 mod symbol;
 mod typ;
 
-use std::path::Path;
+use std::{fs::File, io::BufWriter, path::Path};
 
 use crate::{
     ast::{Ast, Expr},
@@ -20,13 +20,14 @@ use crate::{
     typ::{TypeMap, TypeResolver},
 };
 
-pub fn compile(file_path: &Path) -> Result<(), String> {
-    let mut lexer = Lexer::new(file_path).map_err(|e| e.to_string())?;
+pub fn compile(src_path: &Path, out_path: &Path) -> Result<(), String> {
+    let mut lexer = Lexer::new(src_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     let ast = build_ast(&lexer, &cst_root);
     let type_map = resolve_types(&lexer, &ast)?;
     print_global_types(&ast, &type_map, &lexer);
-    let _ = build_module(&ast, &type_map, &lexer);
+    let module = build_module(&ast, &type_map, &lexer);
+    write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -56,4 +57,10 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
 fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) -> Module {
     let ir_builder = IRBuilder::new(type_map, lexer);
     ir_builder.build(ast)
+}
+
+fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
+    let file = File::create(path)?;
+    let wr = BufWriter::new(file);
+    module.serialize(Box::new(wr))
 }
