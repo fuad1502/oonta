@@ -113,6 +113,7 @@ impl<'a> TypeResolver<'a> {
         if let Some(name) = &fun_expr.recursive_bind {
             self.remove_binding_from_local_ctx(name);
         }
+        // TODO: unpack if return type is Fun
         unify_typ(ret_typ, typ);
         fun_typ
     }
