@@ -7,7 +7,8 @@ let z =
   let f = fun x -> fun y -> x * y in
   f
     ((let x = 4 in
-     fun y -> y + x) 3)
+      fun y -> y + x)
+       3)
     x
 
 let rec f x = f (x - 1)
