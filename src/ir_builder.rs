@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
+    ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr},
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, normalize_typ},
@@ -61,7 +61,7 @@ impl<'a> IRBuilder<'a> {
             Expr::Application(application_expr) => {
                 self.visit_application_expr(application_expr, expr_ptr)
             }
-            Expr::LetIn(let_in_expr) => todo!(),
+            Expr::LetIn(let_in_expr) => self.visit_let_in_expr(let_in_expr),
             Expr::BinOp(bin_op_expr) => self.visit_bin_op_expr(bin_op_expr, expr_ptr),
         }
     }
@@ -163,6 +163,17 @@ impl<'a> IRBuilder<'a> {
         self.curr_fun().call(fun, typ, args)
     }
 
+    fn visit_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> IRValue {
+        let fun_name = self.curr_fun().name().to_string();
+        self.push_ctx(fun_name);
+        let bind_val = self.visit_expr(&let_in_expr.bind.1.borrow());
+        let bind_name = self.lexer.str_from_span(&let_in_expr.bind.0).to_string();
+        self.insert_name_to_ctx(bind_name, bind_val);
+        let val = self.visit_expr(&let_in_expr.expr.borrow());
+        self.pop_ctx();
+        val
+    }
+
     fn visit_var_expr(&mut self, var_expr: &VarExpr) -> IRValue {
         let name = self.lexer.str_from_span(&var_expr.id);
         let val = self.get_value_from_ctx(name);
@@ -177,7 +188,7 @@ impl<'a> IRBuilder<'a> {
         let lhs = self.visit_expr(&bin_op_expr.lhs.borrow());
         let rhs = self.visit_expr(&bin_op_expr.rhs.borrow());
         let typ = self.get_ir_typ(expr_ptr);
-        self.curr_fun().add(typ, lhs, rhs)
+        self.curr_fun().binop(typ, lhs, rhs, bin_op_expr.op)
     }
 
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {

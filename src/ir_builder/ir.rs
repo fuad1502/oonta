@@ -1,7 +1,10 @@
 use core::fmt::Formatter;
 use std::{collections::HashMap, io::Write};
 
-use crate::typ::{Primitive, Type, Variable, normalize_typ};
+use crate::{
+    ast::Operator,
+    typ::{Primitive, Type, Variable, normalize_typ},
+};
 
 #[derive(Default)]
 pub struct Module {
@@ -55,6 +58,9 @@ pub enum IRType {
 pub enum InstrClass {
     Load(IRType, IRValue),
     Add(IRType, IRValue, IRValue),
+    Sub(IRType, IRValue, IRValue),
+    Mul(IRType, IRValue, IRValue),
+    Div(IRType, IRValue, IRValue),
     Store(IRValue, IRValue),
     Call(IRValue, IRType, Vec<IRValue>),
     GetElemPtr(IRType, IRValue, Vec<IRValue>),
@@ -173,6 +179,10 @@ impl Function {
         IRValue::Reg(self.params[idx].0.clone(), self.params[idx].1.clone())
     }
 
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn num_of_params(&self) -> usize {
         self.params.len()
     }
@@ -227,10 +237,22 @@ impl Function {
         instr.value()
     }
 
-    pub fn add(&mut self, typ: IRType, lhs: IRValue, rhs: IRValue) -> IRValue {
+    pub fn binop(
+        &mut self,
+        typ: IRType,
+        lhs: IRValue,
+        rhs: IRValue,
+        operator: Operator,
+    ) -> IRValue {
         let res_name = self.new_name("");
+        let class = match operator {
+            Operator::Plus => InstrClass::Add(typ.clone(), lhs, rhs),
+            Operator::Minus => InstrClass::Sub(typ.clone(), lhs, rhs),
+            Operator::Star => InstrClass::Mul(typ.clone(), lhs, rhs),
+            Operator::Slash => InstrClass::Div(typ.clone(), lhs, rhs),
+        };
         let instr = Instr {
-            class: InstrClass::Add(typ.clone(), lhs, rhs),
+            class,
             res: IRValue::Reg(res_name, typ),
         };
         self.push_instr(instr.clone());
@@ -342,6 +364,15 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Load(irtype, src) => write!(fmt, "load {irtype}, ptr {}", src.name()),
             InstrClass::Add(irtype, lhs, rhs) => {
                 write!(fmt, "add {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Sub(irtype, lhs, rhs) => {
+                write!(fmt, "sub {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Mul(irtype, lhs, rhs) => {
+                write!(fmt, "mul {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Div(irtype, lhs, rhs) => {
+                write!(fmt, "sdiv {irtype} {}, {}", lhs.name(), rhs.name())
             }
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
             InstrClass::Call(fun_ptr, ret_typ, args) => {
