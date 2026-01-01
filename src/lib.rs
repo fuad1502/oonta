@@ -1,3 +1,4 @@
+mod application_visitor;
 mod ast;
 mod ast_builder;
 mod ir_builder;
@@ -11,6 +12,7 @@ mod typ;
 use std::{fs::File, io::BufWriter, path::Path};
 
 use crate::{
+    application_visitor::transform_applications,
     ast::{Ast, Expr},
     ast_builder::AstBuilder,
     ir_builder::{IRBuilder, ir::Module},
@@ -24,7 +26,8 @@ pub fn compile(src_path: &Path, out_path: &Path) -> Result<(), String> {
     let mut lexer = Lexer::new(src_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     let ast = build_ast(&lexer, &cst_root);
-    let type_map = resolve_types(&lexer, &ast)?;
+    let mut type_map = resolve_types(&lexer, &ast)?;
+    transform_applications(&ast, &mut type_map);
     print_global_types(&ast, &type_map, &lexer);
     let module = build_module(&ast, &type_map, &lexer);
     write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
@@ -49,7 +52,9 @@ fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, String> {
 fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
     for binding in &ast.binds {
         let name = lexer.str_from_span(&binding.name);
-        let typ = type_map.get(&*binding.expr as *const Expr).unwrap();
+        let typ = type_map
+            .get(&*binding.expr.borrow() as *const Expr)
+            .unwrap();
         println!("{name}: {}", typ.borrow());
     }
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
-    ir_builder::ir::{FunSignature, Function, GlobalVar, IRPri, IRType, IRValue, Module},
+    ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, normalize_typ},
 };
@@ -41,11 +41,11 @@ impl<'a> IRBuilder<'a> {
     pub fn build(mut self, ast: &Ast) -> Module {
         for binding in &ast.binds {
             let name = self.lexer.str_from_span(&binding.name).to_string();
-            let ir_typ = self.get_ir_typ(&*binding.expr as *const Expr);
+            let ir_typ = self.get_ir_typ(&*binding.expr.borrow() as *const Expr);
             self.module.new_global_var(name.clone(), ir_typ.clone());
             let global_val = IRValue::Global(name.clone(), ir_typ);
             self.insert_name_to_ctx(name, global_val.clone());
-            let expr_val = self.visit_expr(&binding.expr);
+            let expr_val = self.visit_expr(&binding.expr.borrow());
             self.curr_fun().store(expr_val, global_val);
         }
         self.curr_fun().ret(IRValue::Void);
@@ -107,7 +107,7 @@ impl<'a> IRBuilder<'a> {
         }
 
         // 3. Create function body
-        let value = self.visit_expr(&fun_expr.body);
+        let value = self.visit_expr(&fun_expr.body.borrow());
         self.curr_fun().ret(value);
 
         // 4. Create closure
@@ -151,8 +151,8 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_bin_op_expr(&mut self, bin_op_expr: &BinOpExpr, expr_ptr: *const Expr) -> IRValue {
-        let lhs = self.visit_expr(&bin_op_expr.lhs);
-        let rhs = self.visit_expr(&bin_op_expr.rhs);
+        let lhs = self.visit_expr(&bin_op_expr.lhs.borrow());
+        let rhs = self.visit_expr(&bin_op_expr.rhs.borrow());
         let typ = self.get_ir_typ(expr_ptr);
         self.curr_fun().add(typ, lhs, rhs)
     }

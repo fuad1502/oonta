@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::symbol::Span;
 
 // let x = 5
@@ -35,11 +37,11 @@ pub struct Ast {
 #[derive(Debug)]
 pub struct Bind {
     pub name: Span,
-    pub expr: Box<Expr>,
+    pub expr: Rc<RefCell<Expr>>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(LiteralExpr),
     Var(VarExpr),
@@ -49,48 +51,48 @@ pub enum Expr {
     BinOp(BinOpExpr),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LiteralExpr {
     Integer(i32, Span),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VarExpr {
     pub id: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunExpr {
     pub params: Vec<Span>,
-    pub body: Box<Expr>,
+    pub body: Rc<RefCell<Expr>>,
     pub captures: Vec<String>,
     pub recursive_bind: Option<String>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ApplicationExpr {
-    pub fun: Box<Expr>,
-    pub binds: Vec<Expr>,
+    pub fun: Rc<RefCell<Expr>>,
+    pub binds: Vec<Rc<RefCell<Expr>>>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetInExpr {
-    pub bind: (Span, Box<Expr>),
-    pub expr: Box<Expr>,
+    pub bind: (Span, Rc<RefCell<Expr>>),
+    pub expr: Rc<RefCell<Expr>>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinOpExpr {
     pub op: Operator,
-    pub lhs: Box<Expr>,
-    pub rhs: Box<Expr>,
+    pub lhs: Rc<RefCell<Expr>>,
+    pub rhs: Rc<RefCell<Expr>>,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Operator {
     Plus,
     Minus,
@@ -132,7 +134,7 @@ impl Expr {
 
     pub fn fun(
         params: Vec<Span>,
-        body: Box<Expr>,
+        body: Rc<RefCell<Expr>>,
         captures: Vec<String>,
         recursive_bind: Option<String>,
         span: Span,
@@ -146,7 +148,7 @@ impl Expr {
         })
     }
 
-    pub fn binop(op: Operator, lhs: Box<Expr>, rhs: Box<Expr>, span: Span) -> Self {
+    pub fn binop(op: Operator, lhs: Rc<RefCell<Expr>>, rhs: Rc<RefCell<Expr>>, span: Span) -> Self {
         Self::BinOp(BinOpExpr { op, lhs, rhs, span })
     }
 }

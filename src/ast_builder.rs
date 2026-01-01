@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     ast::{ApplicationExpr, Ast, Bind, Expr, LetInExpr, Operator},
     lexer::Lexer,
@@ -53,7 +55,7 @@ impl<'a> AstBuilder<'a> {
         let name = extract_span(&components[1]).clone();
         let expr = self.visit_expr(&components[3]);
         let start_pos = extract_span(&components[0]).start_pos();
-        let end_pos = expr.span().end_pos();
+        let end_pos = expr.borrow().span().end_pos();
         let span = Span::new(start_pos, end_pos);
         Bind { name, expr, span }
     }
@@ -75,19 +77,19 @@ impl<'a> AstBuilder<'a> {
         };
         let expr = self.new_fun_expr(expr, recursive_bind);
         let start_pos = extract_span(&components[0]).start_pos();
-        let end_pos = expr.span().end_pos();
+        let end_pos = expr.borrow().span().end_pos();
         let span = Span::new(start_pos, end_pos);
         Bind { name, expr, span }
     }
 
-    fn visit_expr(&mut self, symbol: &Symbol) -> Box<Expr> {
+    fn visit_expr(&mut self, symbol: &Symbol) -> Rc<RefCell<Expr>> {
         match symbol {
             Symbol::NonTerminal(non_terminal) => self.visit_non_terminal_expr(non_terminal),
             Symbol::Terminal(terminal) => self.visit_terminal_expr(terminal),
         }
     }
 
-    fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Box<Expr> {
+    fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
             12..=18 | 29..=32 => self.visit_expr(&non_terminal.rule.components[0]),
             19 => self.visit_anonymous_fun(&non_terminal.rule.components),
@@ -100,50 +102,50 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Box<Expr> {
+    fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         let params = self.visit_params(&components[1]);
         self.push_closure_ctx(params);
         let expr = self.visit_expr(&components[3]);
         self.new_fun_expr(expr, None)
     }
 
-    fn visit_let_in_expr(&mut self, components: &[Symbol]) -> Box<Expr> {
+    fn visit_let_in_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         // TODO: Change LetInExpr to allow multiple binds and combine nested binds into one
         let bind_name = extract_span(&components[1]).clone();
         let bind_expr = self.visit_expr(&components[3]);
         let expr = self.visit_expr(&components[5]);
         let span = Span::new(
             extract_span(&components[0]).start_pos(),
-            expr.span().end_pos(),
+            expr.borrow().span().end_pos(),
         );
         let let_in_expr = Expr::LetIn(LetInExpr {
             bind: (bind_name, bind_expr),
             expr,
             span,
         });
-        Box::new(let_in_expr)
+        Rc::new(RefCell::new(let_in_expr))
     }
 
-    fn visit_application(&mut self, components: &[Symbol]) -> Box<Expr> {
+    fn visit_application(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         let fun = self.visit_expr(&components[0]);
         let arg = self.visit_expr(&components[1]);
-        self.new_application_expr(*fun, *arg)
+        self.new_application_expr(fun, arg)
     }
 
-    fn visit_append_application(&mut self, components: &[Symbol]) -> Box<Expr> {
+    fn visit_append_application(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         let app = self.visit_expr(&components[0]);
         let arg = self.visit_expr(&components[1]);
-        if let Expr::Application(mut app_expr) = *app {
-            let span = Span::new(app_expr.span.start_pos(), arg.span().end_pos());
+        if let Expr::Application(app_expr) = &mut *app.borrow_mut() {
+            let span = Span::new(app_expr.span.start_pos(), arg.borrow().span().end_pos());
             app_expr.span = span;
-            app_expr.binds.push(*arg);
-            Box::new(Expr::Application(app_expr))
+            app_expr.binds.push(arg);
         } else {
             unreachable!()
         }
+        app
     }
 
-    fn visit_binop_expr(&mut self, components: &[Symbol]) -> Box<Expr> {
+    fn visit_binop_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         let lhs = self.visit_expr(&components[0]);
         let op = match extract_terminal_class(&components[1]) {
             TerminalClass::Plus => Operator::Plus,
@@ -153,11 +155,14 @@ impl<'a> AstBuilder<'a> {
             _ => unreachable!(),
         };
         let rhs = self.visit_expr(&components[2]);
-        let span = Span::new(lhs.span().start_pos(), rhs.span().end_pos());
-        Box::new(Expr::binop(op, lhs, rhs, span))
+        let span = Span::new(
+            lhs.borrow().span().start_pos(),
+            rhs.borrow().span().end_pos(),
+        );
+        Rc::new(RefCell::new(Expr::binop(op, lhs, rhs, span)))
     }
 
-    fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Box<Expr> {
+    fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         match terminal.class() {
             TerminalClass::Number => self.new_integer_expr(terminal),
             TerminalClass::Identifier => self.new_var_expr(terminal),
@@ -183,40 +188,57 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
-    fn new_fun_expr(&mut self, body: Box<Expr>, recursive_bind: Option<String>) -> Box<Expr> {
+    fn new_fun_expr(
+        &mut self,
+        body: Rc<RefCell<Expr>>,
+        recursive_bind: Option<String>,
+    ) -> Rc<RefCell<Expr>> {
         let closure_ctx = self.pop_closure_ctx();
         let mut params = closure_ctx.params;
         let mut captures = closure_ctx.captures;
-        let span = body.span().clone();
-        let body = if let Expr::Fun(mut fun_expr) = *body {
+        let span = body.borrow().span().clone();
+        let body = if let Expr::Fun(fun_expr) = &mut *body.borrow_mut() {
             // TODO: Also capture if the body is a let in expr with anonymous function as its body
             params.append(&mut fun_expr.params);
             captures.append(&mut fun_expr.captures);
-            fun_expr.body
+            fun_expr.body.clone()
         } else {
             body
         };
-        Box::new(Expr::fun(params, body, captures, recursive_bind, span))
+        Rc::new(RefCell::new(Expr::fun(
+            params,
+            body,
+            captures,
+            recursive_bind,
+            span,
+        )))
     }
 
-    fn new_application_expr(&mut self, fun: Expr, arg: Expr) -> Box<Expr> {
-        let span = Span::new(fun.span().start_pos(), arg.span().end_pos());
+    fn new_application_expr(
+        &mut self,
+        fun: Rc<RefCell<Expr>>,
+        arg: Rc<RefCell<Expr>>,
+    ) -> Rc<RefCell<Expr>> {
+        let span = Span::new(
+            fun.borrow().span().start_pos(),
+            arg.borrow().span().end_pos(),
+        );
         let app_expr = ApplicationExpr {
-            fun: Box::new(fun),
+            fun,
             binds: vec![arg],
             span,
         };
-        Box::new(Expr::Application(app_expr))
+        Rc::new(RefCell::new(Expr::Application(app_expr)))
     }
 
-    fn new_integer_expr(&self, terminal: &Terminal) -> Box<Expr> {
+    fn new_integer_expr(&self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         let lexeme = self.lexer.get_lexeme(terminal);
         let span = terminal.span().clone();
         let value = lexeme.parse().unwrap();
-        Box::new(Expr::integer(value, span))
+        Rc::new(RefCell::new(Expr::integer(value, span)))
     }
 
-    fn new_var_expr(&mut self, terminal: &Terminal) -> Box<Expr> {
+    fn new_var_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         let name = self.lexer.get_lexeme(terminal);
         if let Some(ctx) = &mut self.current_closure_ctx
             && !ctx.is_name_in_params(name, self.lexer)
@@ -224,7 +246,7 @@ impl<'a> AstBuilder<'a> {
             ctx.captures.push(name.to_string());
         }
         let id = terminal.span().clone();
-        Box::new(Expr::var(id))
+        Rc::new(RefCell::new(Expr::var(id)))
     }
 
     fn push_closure_ctx(&mut self, params: Vec<Span>) {

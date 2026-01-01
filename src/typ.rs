@@ -64,7 +64,7 @@ impl<'a> TypeResolver<'a> {
     pub fn resolve_types(mut self, ast: &Ast) -> Result<TypeMap, String> {
         for binding in &ast.binds {
             self.var_id_in_local_ctx = 0;
-            let typ = self.infer_type(&binding.expr);
+            let typ = self.infer_type(&binding.expr.borrow());
             let typ = rename(typ);
             let name = self.lexer.str_from_span(&binding.name);
             self.main_context.borrow_mut().insert(name, typ);
@@ -109,21 +109,20 @@ impl<'a> TypeResolver<'a> {
         if let Some(name) = &fun_expr.recursive_bind {
             self.insert_binding_to_local_ctx(name, fun_typ.clone());
         }
-        let typ = self.infer_type(&fun_expr.body);
+        let typ = self.infer_type(&fun_expr.body.borrow());
         if let Some(name) = &fun_expr.recursive_bind {
             self.remove_binding_from_local_ctx(name);
         }
-        // TODO: unpack if return type is Fun
         unify_typ(ret_typ, typ);
         fun_typ
     }
 
     fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> Rc<RefCell<Type>> {
         let name = self.lexer.str_from_span(&let_in_expr.bind.0);
-        let typ = self.infer_type(&let_in_expr.bind.1);
+        let typ = self.infer_type(&let_in_expr.bind.1.borrow());
         self.insert_binding_to_local_ctx(name, typ);
         let ret_typ = self.new_var();
-        let typ = self.infer_type(&let_in_expr.expr);
+        let typ = self.infer_type(&let_in_expr.expr.borrow());
         unify_typ(ret_typ.clone(), typ);
         ret_typ
     }
@@ -131,37 +130,35 @@ impl<'a> TypeResolver<'a> {
     fn infer_application_expr(&mut self, application_expr: &ApplicationExpr) -> Rc<RefCell<Type>> {
         let mut arg_typs = vec![];
         for arg in &application_expr.binds {
-            arg_typs.push(self.infer_type(arg));
+            arg_typs.push(self.infer_type(&arg.borrow()));
         }
         let ret_typ = self.new_var();
-        let inferred_typ = self.infer_type(&application_expr.fun);
-        Self::unify_application_typ(arg_typs, ret_typ, inferred_typ)
+        let inferred_typ = self.infer_type(&application_expr.fun.borrow());
+        self.unify_application_typ(arg_typs, ret_typ, inferred_typ)
     }
 
     fn unify_application_typ(
+        &mut self,
         arg_typs: Vec<Rc<RefCell<Type>>>,
         ret_typ: Rc<RefCell<Type>>,
         inferred_typ: Rc<RefCell<Type>>,
     ) -> Rc<RefCell<Type>> {
         let unboxed_inferred_typ = inferred_typ.borrow().clone();
         match unboxed_inferred_typ {
-            Type::Variable(Variable::Link(typ)) => {
-                Self::unify_application_typ(arg_typs, ret_typ, typ)
-            }
-            Type::Variable(Variable::Unbound(_)) => {
+            Type::Variable(_) => {
                 let mut fun_typ = arg_typs;
                 fun_typ.push(ret_typ.clone());
                 unify_typ(Rc::new(RefCell::new(Type::Fun(fun_typ))), inferred_typ);
                 ret_typ
             }
-            Type::Fun(mut inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
-                let mut inferred_fun_ret = inferred_fun_typs.split_off(arg_typs.len());
+            Type::Fun(inferred_fun_typs) if inferred_fun_typs.len() > arg_typs.len() => {
+                let mut inferred_fun_params = inferred_fun_typs;
+                let mut inferred_fun_ret = inferred_fun_params.split_off(arg_typs.len());
                 let inferred_fun_ret = if inferred_fun_ret.len() == 1 {
                     inferred_fun_ret.pop().unwrap()
                 } else {
                     Rc::new(RefCell::new(Type::Fun(inferred_fun_ret)))
                 };
-                let inferred_fun_params = inferred_fun_typs;
                 arg_typs
                     .into_iter()
                     .zip(inferred_fun_params)
@@ -169,8 +166,13 @@ impl<'a> TypeResolver<'a> {
                 unify_typ(ret_typ.clone(), inferred_fun_ret);
                 ret_typ
             }
-            Type::Fun(_) => {
-                todo!()
+            Type::Fun(inferred_fun_typs) => {
+                let mut first_arg_typs = arg_typs;
+                let second_arg_typs = first_arg_typs.split_off(inferred_fun_typs.len() - 1);
+                let first_ret_typ = self.new_var();
+                self.unify_application_typ(first_arg_typs, first_ret_typ.clone(), inferred_typ);
+                self.unify_application_typ(second_arg_typs, ret_typ.clone(), first_ret_typ);
+                ret_typ
             }
             _ => todo!(),
         }
@@ -194,9 +196,9 @@ impl<'a> TypeResolver<'a> {
             | crate::ast::Operator::Star
             | crate::ast::Operator::Slash => {
                 let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Integer)));
-                let typ = self.infer_type(&bin_op_expr.lhs);
+                let typ = self.infer_type(&bin_op_expr.lhs.borrow());
                 unify_typ(int_typ.clone(), typ);
-                let typ = self.infer_type(&bin_op_expr.rhs);
+                let typ = self.infer_type(&bin_op_expr.rhs.borrow());
                 unify_typ(int_typ.clone(), typ);
                 int_typ
             }
@@ -413,7 +415,7 @@ impl TypeMap {
         self.map.get(&expr_ptr).cloned()
     }
 
-    fn insert(&mut self, expr_ptr: *const Expr, typ: Rc<RefCell<Type>>) {
+    pub fn insert(&mut self, expr_ptr: *const Expr, typ: Rc<RefCell<Type>>) {
         self.map.insert(expr_ptr, typ);
     }
 }
