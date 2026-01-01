@@ -97,11 +97,16 @@ impl<'a> IRBuilder<'a> {
             .map(|e| self.get_value_from_ctx(e))
             .collect();
         let env_typs: Vec<IRType> = env_values.iter().map(|v| v.typ()).cloned().collect();
-        let env_typ = IRType::Struct(env_typs.clone());
-        for (name, typ) in fun_expr.captures.iter().zip(env_typs) {
-            let ptr = self
-                .curr_fun()
-                .getelemptr(env_typ.clone(), env_ptr.clone(), &[0, 0]);
+        let closure_typ = if env_typs.is_empty() {
+            IRType::Struct(vec![IRType::Ptr])
+        } else {
+            let env_typ = IRType::Struct(env_typs.clone());
+            IRType::Struct(vec![IRType::Ptr, env_typ])
+        };
+        for (i, (name, typ)) in fun_expr.captures.iter().zip(env_typs).enumerate() {
+            let ptr =
+                self.curr_fun()
+                    .getelemptr(closure_typ.clone(), env_ptr.clone(), &[0, 1, i as i32]);
             let val = self.curr_fun().load(typ, ptr);
             self.insert_name_to_ctx(name.to_string(), val);
         }
@@ -113,7 +118,6 @@ impl<'a> IRBuilder<'a> {
         // 4. Create closure
         self.pop_ctx();
         let closure_ptr = self.malloc(4 * (1 + fun_expr.captures.len()));
-        let closure_typ = IRType::Struct(vec![IRType::Ptr, env_typ]);
 
         // > store anon function ptr
         let ptr = self
