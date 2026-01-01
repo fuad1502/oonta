@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
+    ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LiteralExpr, VarExpr},
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, normalize_typ},
@@ -58,7 +58,9 @@ impl<'a> IRBuilder<'a> {
             Expr::Literal(literal_expr) => self.visit_literal_expr(literal_expr),
             Expr::Var(var_expr) => self.visit_var_expr(var_expr),
             Expr::Fun(fun_expr) => self.visit_fun_expr(fun_expr, expr_ptr),
-            Expr::Application(application_expr) => todo!(),
+            Expr::Application(application_expr) => {
+                self.visit_application_expr(application_expr, expr_ptr)
+            }
             Expr::LetIn(let_in_expr) => todo!(),
             Expr::BinOp(bin_op_expr) => self.visit_bin_op_expr(bin_op_expr, expr_ptr),
         }
@@ -142,6 +144,23 @@ impl<'a> IRBuilder<'a> {
         }
 
         closure_ptr
+    }
+
+    fn visit_application_expr(
+        &mut self,
+        application_expr: &ApplicationExpr,
+        expr_ptr: *const Expr,
+    ) -> IRValue {
+        let mut args = application_expr
+            .binds
+            .iter()
+            .map(|e| self.visit_expr(&e.borrow()))
+            .collect::<Vec<IRValue>>();
+        let closure = self.visit_expr(&application_expr.fun.borrow());
+        args.push(closure.clone());
+        let fun = self.curr_fun().load(IRType::Ptr, closure);
+        let typ = self.get_ir_typ(expr_ptr);
+        self.curr_fun().call(fun, typ, args)
     }
 
     fn visit_var_expr(&mut self, var_expr: &VarExpr) -> IRValue {
