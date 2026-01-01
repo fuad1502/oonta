@@ -15,7 +15,16 @@ pub fn transform_applications(ast: &Ast, type_map: &mut TypeMap) {
 fn transform_expr(expr: &Rc<RefCell<Expr>>, type_map: &mut TypeMap) {
     match &mut *expr.borrow_mut() {
         Expr::Application(application_expr) => transform_application(application_expr, type_map),
-        _ => (),
+        Expr::Fun(fun_expr) => transform_expr(&fun_expr.body, type_map),
+        Expr::LetIn(let_in_expr) => {
+            transform_expr(&let_in_expr.bind.1, type_map);
+            transform_expr(&let_in_expr.expr, type_map);
+        }
+        Expr::BinOp(bin_op_expr) => {
+            transform_expr(&bin_op_expr.lhs, type_map);
+            transform_expr(&bin_op_expr.rhs, type_map);
+        }
+        Expr::Literal(_) | Expr::Var(_) => (),
     }
 }
 

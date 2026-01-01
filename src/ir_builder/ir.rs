@@ -100,18 +100,15 @@ impl Module {
     pub fn serialize(&self, mut wr: Box<dyn Write>) -> std::io::Result<()> {
         self.function_decls
             .values()
-            .map(|decl| writeln!(wr, "{decl}"))
-            .collect::<std::io::Result<()>>()?;
+            .try_for_each(|decl| writeln!(wr, "{decl}"))?;
         writeln!(wr)?;
         self.global_vars
             .iter()
-            .map(|var| writeln!(wr, "{var}"))
-            .collect::<std::io::Result<()>>()?;
+            .try_for_each(|var| writeln!(wr, "{var}"))?;
         writeln!(wr)?;
         self.function_defs
             .values()
-            .map(|fun| writeln!(wr, "{fun}\n"))
-            .collect()
+            .try_for_each(|fun| writeln!(wr, "{fun}\n"))
     }
 }
 
@@ -158,7 +155,7 @@ impl Function {
             let ret_typ = ir_typs.pop().unwrap();
             let params = ir_typs
                 .into_iter()
-                .zip(param_names.into_iter())
+                .zip(param_names)
                 .map(|(ir_typ, name)| (name, ir_typ))
                 .collect::<Vec<(String, IRType)>>();
             Function::new(name, ret_typ, params)
@@ -264,10 +261,7 @@ impl std::fmt::Display for Function {
         write!(fmt, "define {typ} @{name}(")?;
         write_comma_separated(&self.params, fmt)?;
         writeln!(fmt, ") {{")?;
-        self.bbs
-            .iter()
-            .map(|bb| write!(fmt, "{bb}"))
-            .collect::<Result<(), std::fmt::Error>>()?;
+        self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
         write!(fmt, "}}")
     }
 }
@@ -323,8 +317,7 @@ impl std::fmt::Display for BasicBlock {
         writeln!(fmt, "{label}:")?;
         self.instrs
             .iter()
-            .map(|i| writeln!(fmt, "    {i}"))
-            .collect()
+            .try_for_each(|i| writeln!(fmt, "    {i}"))
     }
 }
 
