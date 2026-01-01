@@ -4,7 +4,11 @@ let addthree = add 3
 let y = add x x
 
 let z =
-  let f = fun x -> fun y -> x * y in
+  let f =
+   fun x ->
+    let z = 1 in
+    fun y -> (x * y) + z
+  in
   f
     ((let x = 4 in
       fun y -> y + x)
