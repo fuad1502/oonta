@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     ast::{ApplicationExpr, Ast, Expr},
     symbol::Span,
-    typ::{Type, TypeMap, normalize_typ},
+    typ::{Type, TypeMap, extract_fun_typs, normalize_typ},
 };
 
 pub fn transform_applications(ast: &Ast, type_map: &mut TypeMap) {
@@ -54,13 +54,5 @@ fn transform_application(application_expr: &mut ApplicationExpr, type_map: &mut 
         application_expr.fun = inner_expr;
         application_expr.binds = args_reminder;
         transform_application(application_expr, type_map);
-    }
-}
-
-fn extract_fun_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
-    if let Type::Fun(typs) = typ {
-        Some(typs)
-    } else {
-        None
     }
 }

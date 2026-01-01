@@ -381,6 +381,14 @@ pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
     }
 }
 
+pub fn extract_fun_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
+    if let Type::Fun(typs) = typ {
+        Some(typs)
+    } else {
+        None
+    }
+}
+
 impl std::fmt::Display for Type {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {

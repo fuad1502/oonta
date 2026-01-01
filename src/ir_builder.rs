@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr},
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
-    typ::{Type, TypeMap, normalize_typ},
+    typ::{Type, TypeMap, extract_fun_typs, normalize_typ},
 };
 
 pub mod ir;
@@ -67,6 +67,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_fun_expr(&mut self, fun_expr: &FunExpr, expr_ptr: *const Expr) -> IRValue {
+        // TODO: Handle recursive function
         // 1. Create function
         let fun_name = self.new_anon_fun_name();
         let param_names: Vec<String> = fun_expr
@@ -82,9 +83,9 @@ impl<'a> IRBuilder<'a> {
         self.module.new_function(fun_name.clone(), fun);
 
         // 2. Populate context
+        self.push_ctx(fun_name.clone());
 
         // > insert parameters to context
-        self.push_ctx(fun_name.clone());
         for (i, name) in param_names.into_iter().enumerate() {
             let param = self.curr_fun().param(i);
             self.insert_name_to_ctx(name, param);
@@ -151,6 +152,24 @@ impl<'a> IRBuilder<'a> {
         application_expr: &ApplicationExpr,
         expr_ptr: *const Expr,
     ) -> IRValue {
+        let mut fun_typs = {
+            let fun_expr_ptr = &*application_expr.fun.borrow() as *const Expr;
+            let fun_typ = normalize_typ(self.type_map.get(fun_expr_ptr).unwrap());
+            extract_fun_typs(fun_typ).unwrap()
+        };
+
+        let num_of_remainding_args = fun_typs.len() - 1 - application_expr.binds.len();
+        if num_of_remainding_args > 0 {
+            let fun_typs = fun_typs.split_off(application_expr.binds.len());
+            let ret_typ = normalize_typ(fun_typs.last().unwrap().clone());
+            return self.visit_partial_application_expr(
+                application_expr,
+                num_of_remainding_args,
+                fun_typs,
+                ret_typ,
+            );
+        }
+
         let mut args = application_expr
             .binds
             .iter()
@@ -159,8 +178,109 @@ impl<'a> IRBuilder<'a> {
         let closure = self.visit_expr(&application_expr.fun.borrow());
         args.push(closure.clone());
         let fun = self.curr_fun().load(IRType::Ptr, closure);
-        let typ = self.get_ir_typ(expr_ptr);
-        self.curr_fun().call(fun, typ, args)
+        let res_typ = self.get_ir_typ(expr_ptr);
+        self.curr_fun().call(fun, res_typ, args)
+    }
+
+    fn visit_partial_application_expr(
+        &mut self,
+        application_expr: &ApplicationExpr,
+        num_of_remainding_args: usize,
+        dispatch_fun_typs: Vec<Rc<RefCell<Type>>>,
+        dispatch_ret_typ: Type,
+    ) -> IRValue {
+        // 1. Create function
+        let dispatch_fun_name = self.new_anon_fun_name();
+        let dispath_param_names = vec![String::new(); num_of_remainding_args];
+        let mut dispatch_fun = Function::from_typ(
+            dispatch_fun_name.clone(),
+            dispath_param_names.clone(),
+            Type::Fun(dispatch_fun_typs),
+        );
+        dispatch_fun.add_param(("env".to_string(), IRType::Ptr));
+
+        // > add function to module
+        self.module
+            .new_function(dispatch_fun_name.clone(), dispatch_fun);
+
+        // 2. Create dispath closure
+        let closure = self.visit_expr(&application_expr.fun.borrow());
+        let args: Vec<IRValue> = application_expr
+            .binds
+            .iter()
+            .map(|e| self.visit_expr(&e.borrow()))
+            .collect();
+        let arg_typs: Vec<IRType> = args.iter().map(|v| v.typ()).cloned().collect();
+        let mut env_typs = vec![closure.typ().clone()];
+        env_typs.extend(arg_typs.clone());
+        let dispath_closure_typ =
+            IRType::Struct(vec![IRType::Ptr, IRType::Struct(env_typs.clone())]);
+        let dispath_closure_ptr = self.malloc(4 * (1 + env_typs.len()));
+
+        // > store anon function ptr
+        let ptr = self.curr_fun().getelemptr(
+            dispath_closure_typ.clone(),
+            dispath_closure_ptr.clone(),
+            &[0, 0],
+        );
+        self.curr_fun()
+            .store(IRValue::Global(dispatch_fun_name.clone(), IRType::Ptr), ptr);
+
+        // > store env values (fun)
+        let ptr = self.curr_fun().getelemptr(
+            dispath_closure_typ.clone(),
+            dispath_closure_ptr.clone(),
+            &[0, 1, 0],
+        );
+        self.curr_fun().store(closure, ptr);
+
+        // > store env values (args)
+        for (i, value) in args.into_iter().enumerate() {
+            let ptr = self.curr_fun().getelemptr(
+                dispath_closure_typ.clone(),
+                dispath_closure_ptr.clone(),
+                &[0, 1, (i + 1) as i32],
+            );
+            self.curr_fun().store(value, ptr);
+        }
+
+        // 3. Create function body
+        self.push_ctx(dispatch_fun_name);
+        let num_of_params = self.curr_fun().num_of_params();
+        let env = self.curr_fun().param(num_of_params - 1);
+
+        // > grab fun
+        let ptr = self
+            .curr_fun()
+            .getelemptr(dispath_closure_typ.clone(), env.clone(), &[0, 1, 0]);
+        let closure = self.curr_fun().load(IRType::Ptr, ptr);
+
+        // > grab args
+        let mut args: Vec<IRValue> = arg_typs
+            .into_iter()
+            .enumerate()
+            .map(|(i, typ)| {
+                let ptr = self.curr_fun().getelemptr(
+                    dispath_closure_typ.clone(),
+                    env.clone(),
+                    &[0, 1, (i + 1) as i32],
+                );
+                self.curr_fun().load(typ, ptr)
+            })
+            .collect();
+        let remainding_args = (0..num_of_remainding_args).map(|i| self.curr_fun().param(i));
+        args.extend(remainding_args);
+        args.push(closure.clone());
+
+        // > call fun with args
+        let fun = self.curr_fun().load(IRType::Ptr, closure);
+        let res_typ = IRType::from(dispatch_ret_typ);
+        let res = self.curr_fun().call(fun, res_typ, args);
+        self.curr_fun().ret(res);
+
+        self.pop_ctx();
+
+        dispath_closure_ptr
     }
 
     fn visit_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> IRValue {
