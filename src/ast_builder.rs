@@ -55,10 +55,7 @@ impl<'a> AstBuilder<'a> {
     fn visit_var_bind(&mut self, components: &[Symbol]) -> Bind {
         let name = extract_span(&components[1]).clone();
         let expr = self.visit_expr(&components[3]);
-        let start_pos = extract_span(&components[0]).start_pos();
-        let end_pos = expr.borrow().span().end_pos();
-        let span = Span::new(start_pos, end_pos);
-        Bind { name, expr, span }
+        Bind { name, expr }
     }
 
     fn visit_fun_bind(&mut self, components: &[Symbol], recursive: bool) -> Bind {
@@ -77,10 +74,7 @@ impl<'a> AstBuilder<'a> {
             None
         };
         let expr = self.new_fun_expr(expr, recursive_bind);
-        let start_pos = extract_span(&components[0]).start_pos();
-        let end_pos = expr.borrow().span().end_pos();
-        let span = Span::new(start_pos, end_pos);
-        Bind { name, expr, span }
+        Bind { name, expr }
     }
 
     fn visit_expr(&mut self, symbol: &Symbol) -> Rc<RefCell<Expr>> {

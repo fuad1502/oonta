@@ -26,7 +26,10 @@ pub fn compile(src_path: &Path, out_path: &Path) -> Result<(), String> {
     let mut lexer = Lexer::new(src_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     let ast = build_ast(&lexer, &cst_root);
-    let mut type_map = resolve_types(&lexer, &ast)?;
+    let mut type_map = match resolve_types(&lexer, &ast) {
+        Ok(type_map) => type_map,
+        Err(e) => return Err(e.report(&lexer)),
+    };
     transform_applications(&ast, &mut type_map);
     print_global_types(&ast, &type_map, &lexer);
     let module = build_module(&ast, &type_map, &lexer);
@@ -44,7 +47,7 @@ fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Ast {
     ast_builder.visit(cst_root)
 }
 
-fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, String> {
+fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, typ::Error> {
     let type_resolver = TypeResolver::new(lexer);
     type_resolver.resolve_types(ast)
 }

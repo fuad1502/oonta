@@ -38,7 +38,6 @@ pub struct Ast {
 pub struct Bind {
     pub name: Span,
     pub expr: Rc<RefCell<Expr>>,
-    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
