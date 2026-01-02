@@ -98,6 +98,11 @@ pub enum Operator {
     Minus,
     Star,
     Slash,
+    Eq,
+    Lte,
+    Lt,
+    Gte,
+    Gt,
 }
 
 impl From<Bind> for Ast {

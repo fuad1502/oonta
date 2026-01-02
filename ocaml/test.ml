@@ -16,3 +16,6 @@ let z =
     x
 
 let rec f x = f (x - 1) + 1
+
+let a = 4 >= 4
+let b = x = 10

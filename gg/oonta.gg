@@ -9,9 +9,13 @@ Plus("+")
 Minus("-")
 Star("\*")
 Slash("/")
+Lte("<=")
+Lt("<")
+Gte(">=")
+Gt(">")
 LeftParen("\(")
 RightParen("\)")
-Number("\d")
+Number("\d\d*")
 Identifier("\w\w*")
 
 %RULES
@@ -33,7 +37,16 @@ Parenthesize = LeftParen Expr RightParen;
 
 LetIn = Let Identifier Eq Expr In Expr;
 
-BinOp = Expr Plus Expr | Expr Minus Expr | Expr Star Expr | Expr Slash Expr;
+BinOp = 
+Expr Plus Expr |
+Expr Minus Expr |
+Expr Star Expr |
+Expr Slash Expr |
+Expr Eq Expr |
+Expr Lte Expr |
+Expr Lt Expr |
+Expr Gte Expr |
+Expr Gt Expr;
 
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
 Arg = Identifier | Literal | Parenthesize;
@@ -50,3 +63,14 @@ BinOp(1)
 BinOp(2)
 Plus
 Minus
+
+BinOp(5)
+BinOp(6)
+BinOp(7)
+BinOp(8)
+BinOp(9)
+Eq
+Lte
+Lt
+Gte
+Gt

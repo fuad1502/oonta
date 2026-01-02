@@ -48,6 +48,7 @@ pub struct Instr {
 #[derive(Debug, Clone)]
 pub enum IRType {
     Void,
+    I1,
     I32,
     I64,
     Ptr,
@@ -61,6 +62,11 @@ pub enum InstrClass {
     Sub(IRType, IRValue, IRValue),
     Mul(IRType, IRValue, IRValue),
     Div(IRType, IRValue, IRValue),
+    Eq(IRType, IRValue, IRValue),
+    Lte(IRType, IRValue, IRValue),
+    Lt(IRType, IRValue, IRValue),
+    Gte(IRType, IRValue, IRValue),
+    Gt(IRType, IRValue, IRValue),
     Store(IRValue, IRValue),
     Call(IRValue, IRType, Vec<IRValue>),
     GetElemPtr(IRType, IRValue, Vec<IRValue>),
@@ -123,7 +129,7 @@ impl std::fmt::Display for GlobalVar {
         let name = &self.name;
         let typ = &self.ir_typ;
         let init = match typ {
-            IRType::I32 | IRType::I64 => "0",
+            IRType::I32 | IRType::I64 | IRType::I1 => "0",
             IRType::Ptr => "null",
             IRType::Void => todo!(),
             IRType::Struct(_) => todo!(),
@@ -245,11 +251,17 @@ impl Function {
         operator: Operator,
     ) -> IRValue {
         let res_name = self.new_name("");
+        let op_typ = lhs.typ().clone();
         let class = match operator {
-            Operator::Plus => InstrClass::Add(typ.clone(), lhs, rhs),
-            Operator::Minus => InstrClass::Sub(typ.clone(), lhs, rhs),
-            Operator::Star => InstrClass::Mul(typ.clone(), lhs, rhs),
-            Operator::Slash => InstrClass::Div(typ.clone(), lhs, rhs),
+            Operator::Plus => InstrClass::Add(op_typ, lhs, rhs),
+            Operator::Minus => InstrClass::Sub(op_typ, lhs, rhs),
+            Operator::Star => InstrClass::Mul(op_typ, lhs, rhs),
+            Operator::Slash => InstrClass::Div(op_typ, lhs, rhs),
+            Operator::Eq => InstrClass::Eq(op_typ, lhs, rhs),
+            Operator::Lte => InstrClass::Lte(op_typ, lhs, rhs),
+            Operator::Lt => InstrClass::Lt(op_typ, lhs, rhs),
+            Operator::Gte => InstrClass::Gte(op_typ, lhs, rhs),
+            Operator::Gt => InstrClass::Gt(op_typ, lhs, rhs),
         };
         let instr = Instr {
             class,
@@ -374,6 +386,21 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Div(irtype, lhs, rhs) => {
                 write!(fmt, "sdiv {irtype} {}, {}", lhs.name(), rhs.name())
             }
+            InstrClass::Eq(irtype, lhs, rhs) => {
+                write!(fmt, "icmp eq {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Lte(irtype, lhs, rhs) => {
+                write!(fmt, "icmp sle {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Lt(irtype, lhs, rhs) => {
+                write!(fmt, "icmp slt {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Gte(irtype, lhs, rhs) => {
+                write!(fmt, "icmp sge {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Gt(irtype, lhs, rhs) => {
+                write!(fmt, "icmp sgt {irtype} {}, {}", lhs.name(), rhs.name())
+            }
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
             InstrClass::Call(fun_ptr, ret_typ, args) => {
                 write!(fmt, "call {ret_typ} {}(", fun_ptr.name())?;
@@ -435,6 +462,7 @@ impl From<Type> for IRType {
         match typ {
             Type::Fun(_) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I32,
+            Type::Primitive(Primitive::Bool) => IRType::I1,
             Type::Variable(Variable::Unbound(_)) => todo!(),
             Type::Variable(Variable::Link(_)) => panic!(""),
         }
@@ -445,6 +473,7 @@ impl std::fmt::Display for IRType {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
             IRType::Void => write!(fmt, "void"),
+            IRType::I1 => write!(fmt, "i1"),
             IRType::I32 => write!(fmt, "i32"),
             IRType::I64 => write!(fmt, "i64"),
             IRType::Ptr => write!(fmt, "ptr"),

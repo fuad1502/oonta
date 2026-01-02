@@ -91,13 +91,13 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            12..=18 | 29..=32 => self.visit_expr(&non_terminal.rule.components[0]),
+            12..=18 | 34..=37 => self.visit_expr(&non_terminal.rule.components[0]),
             19 => self.visit_anonymous_fun(&non_terminal.rule.components),
             20 => self.visit_expr(&non_terminal.rule.components[1]),
             21 => self.visit_let_in_expr(&non_terminal.rule.components),
-            22..=25 => self.visit_binop_expr(&non_terminal.rule.components),
-            26 => self.visit_append_application(&non_terminal.rule.components),
-            27 | 28 => self.visit_application(&non_terminal.rule.components),
+            22..=30 => self.visit_binop_expr(&non_terminal.rule.components),
+            31 => self.visit_append_application(&non_terminal.rule.components),
+            32 | 33 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -152,6 +152,11 @@ impl<'a> AstBuilder<'a> {
             TerminalClass::Minus => Operator::Minus,
             TerminalClass::Star => Operator::Star,
             TerminalClass::Slash => Operator::Slash,
+            TerminalClass::Eq => Operator::Eq,
+            TerminalClass::Lte => Operator::Lte,
+            TerminalClass::Lt => Operator::Lt,
+            TerminalClass::Gte => Operator::Gte,
+            TerminalClass::Gt => Operator::Gt,
             _ => unreachable!(),
         };
         let rhs = self.visit_expr(&components[2]);

@@ -19,6 +19,7 @@ pub enum Type {
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Primitive {
     Integer,
+    Bool,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -201,6 +202,19 @@ impl<'a> TypeResolver<'a> {
                 let typ = self.infer_type(&bin_op_expr.rhs.borrow());
                 unify_typ(int_typ.clone(), typ);
                 int_typ
+            }
+            crate::ast::Operator::Eq
+            | crate::ast::Operator::Lte
+            | crate::ast::Operator::Lt
+            | crate::ast::Operator::Gte
+            | crate::ast::Operator::Gt => {
+                let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Integer)));
+                let bool_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Bool)));
+                let typ = self.infer_type(&bin_op_expr.lhs.borrow());
+                unify_typ(int_typ.clone(), typ);
+                let typ = self.infer_type(&bin_op_expr.rhs.borrow());
+                unify_typ(int_typ.clone(), typ);
+                bool_typ
             }
         }
     }
@@ -412,6 +426,7 @@ impl std::fmt::Display for Type {
             }
             Type::Primitive(primitive) => match primitive {
                 Primitive::Integer => write!(fmt, "int"),
+                Primitive::Bool => write!(fmt, "bool"),
             },
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
         }
