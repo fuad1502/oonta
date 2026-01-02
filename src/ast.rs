@@ -49,6 +49,7 @@ pub enum Expr {
     Application(ApplicationExpr),
     LetIn(LetInExpr),
     BinOp(BinOpExpr),
+    Conditional(CondExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +93,14 @@ pub struct BinOpExpr {
     pub span: Span,
 }
 
+#[derive(Debug, Clone)]
+pub struct CondExpr {
+    pub cond: Rc<RefCell<Expr>>,
+    pub yes: Rc<RefCell<Expr>>,
+    pub no: Rc<RefCell<Expr>>,
+    pub span: Span,
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum Operator {
     Plus,
@@ -126,6 +135,7 @@ impl Expr {
             Expr::Application(ApplicationExpr { span, .. }) => span,
             Expr::LetIn(LetInExpr { span, .. }) => span,
             Expr::BinOp(BinOpExpr { span, .. }) => span,
+            Expr::Conditional(CondExpr { span, .. }) => span,
         }
     }
 

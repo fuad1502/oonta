@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    ast::{ApplicationExpr, Ast, Bind, Expr, LetInExpr, Operator},
+    ast::{ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, Operator},
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -91,15 +91,33 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            12..=18 | 34..=37 => self.visit_expr(&non_terminal.rule.components[0]),
-            19 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            20 => self.visit_expr(&non_terminal.rule.components[1]),
-            21 => self.visit_let_in_expr(&non_terminal.rule.components),
-            22..=30 => self.visit_binop_expr(&non_terminal.rule.components),
-            31 => self.visit_append_application(&non_terminal.rule.components),
-            32 | 33 => self.visit_application(&non_terminal.rule.components),
+            12..=18 | 35..=38 => self.visit_expr(&non_terminal.rule.components[0]),
+            19 => self.visit_if_then_else_expr(&non_terminal.rule.components),
+            20 => self.visit_anonymous_fun(&non_terminal.rule.components),
+            21 => self.visit_expr(&non_terminal.rule.components[1]),
+            22 => self.visit_let_in_expr(&non_terminal.rule.components),
+            23..=31 => self.visit_binop_expr(&non_terminal.rule.components),
+            32 => self.visit_append_application(&non_terminal.rule.components),
+            33 | 34 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
+    }
+
+    fn visit_if_then_else_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
+        let cond = self.visit_expr(&components[1]);
+        let yes = self.visit_expr(&components[3]);
+        let no = self.visit_expr(&components[5]);
+        let span = Span::new(
+            extract_span(&components[0]).start_pos(),
+            no.borrow().span().end_pos(),
+        );
+        let cond_expr = Expr::Conditional(CondExpr {
+            cond,
+            yes,
+            no,
+            span,
+        });
+        Rc::new(RefCell::new(cond_expr))
     }
 
     fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {

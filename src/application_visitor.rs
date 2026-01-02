@@ -24,6 +24,11 @@ fn transform_expr(expr: &Rc<RefCell<Expr>>, type_map: &mut TypeMap) {
             transform_expr(&bin_op_expr.lhs, type_map);
             transform_expr(&bin_op_expr.rhs, type_map);
         }
+        Expr::Conditional(cond_expr) => {
+            transform_expr(&cond_expr.cond, type_map);
+            transform_expr(&cond_expr.yes, type_map);
+            transform_expr(&cond_expr.no, type_map);
+        }
         Expr::Literal(_) | Expr::Var(_) => (),
     }
 }

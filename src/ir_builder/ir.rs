@@ -23,6 +23,7 @@ pub struct Function {
     ret_typ: IRType,
     params: Vec<Param>,
     bbs: Vec<BasicBlock>,
+    curr_bb: String,
     used_names: HashMap<String, usize>,
 }
 
@@ -69,6 +70,9 @@ pub enum InstrClass {
     Gt(IRType, IRValue, IRValue),
     Store(IRValue, IRValue),
     Call(IRValue, IRType, Vec<IRValue>),
+    Alloca(IRType),
+    CondBrk(IRValue, String, String),
+    Brk(String),
     GetElemPtr(IRType, IRValue, Vec<IRValue>),
     Return(IRValue),
 }
@@ -145,6 +149,7 @@ impl Function {
             ret_typ,
             params: vec![],
             bbs: vec![],
+            curr_bb: String::new(),
             used_names: HashMap::new(),
         };
         _ = fun.new_name("");
@@ -152,8 +157,11 @@ impl Function {
             .into_iter()
             .map(|(n, t)| Param(fun.new_name(&n), t))
             .collect();
+        let entry_label = fun.new_name("entry");
+        let entry_bb = BasicBlock::new(entry_label.clone());
         fun.params = params;
-        fun.bbs.push(BasicBlock::new("entry".to_string()));
+        fun.bbs.push(entry_bb);
+        fun.curr_bb = entry_label;
         fun
     }
 
@@ -174,6 +182,17 @@ impl Function {
         } else {
             unreachable!()
         }
+    }
+
+    pub fn add_bb(&mut self, label: &str) -> String {
+        let bb_label = self.new_name(label);
+        let bb = BasicBlock::new(bb_label.clone());
+        self.bbs.push(bb);
+        bb_label
+    }
+
+    pub fn set_bb(&mut self, label: String) {
+        self.curr_bb = label;
     }
 
     pub fn add_param(&mut self, param: (String, IRType)) {
@@ -243,6 +262,32 @@ impl Function {
         instr.value()
     }
 
+    pub fn alloca(&mut self, typ: IRType) -> IRValue {
+        let res_name = self.new_name("");
+        let instr = Instr {
+            class: InstrClass::Alloca(typ),
+            res: IRValue::Reg(res_name, IRType::Ptr),
+        };
+        self.push_instr(instr.clone());
+        instr.value()
+    }
+
+    pub fn cond_brk(&mut self, cond: IRValue, then_label: String, else_label: String) {
+        let instr = Instr {
+            class: InstrClass::CondBrk(cond, then_label, else_label),
+            res: IRValue::Void,
+        };
+        self.push_instr(instr);
+    }
+
+    pub fn brk(&mut self, label: String) {
+        let instr = Instr {
+            class: InstrClass::Brk(label),
+            res: IRValue::Void,
+        };
+        self.push_instr(instr);
+    }
+
     pub fn binop(
         &mut self,
         typ: IRType,
@@ -272,7 +317,11 @@ impl Function {
     }
 
     fn push_instr(&mut self, instr: Instr) {
-        self.bbs.last_mut().unwrap().push_instr(instr);
+        self.bbs
+            .iter_mut()
+            .find(|bb| bb.label == self.curr_bb)
+            .unwrap()
+            .push_instr(instr);
     }
 
     fn new_name(&mut self, base: &str) -> String {
@@ -412,6 +461,14 @@ impl std::fmt::Display for InstrClass {
                 write_comma_separated(indexes, fmt)
             }
             InstrClass::Return(val) => write!(fmt, "ret {val}"),
+            InstrClass::Alloca(irtype) => write!(fmt, "alloca {irtype}"),
+            InstrClass::CondBrk(irvalue, then_label, else_label) => {
+                write!(
+                    fmt,
+                    "br {irvalue}, label %{then_label}, label %{else_label}"
+                )
+            }
+            InstrClass::Brk(label) => write!(fmt, "br label %{label}"),
         }
     }
 }

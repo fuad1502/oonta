@@ -1,7 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr},
+    ast::{
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr,
+    },
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, extract_fun_typs, normalize_typ},
@@ -63,6 +65,7 @@ impl<'a> IRBuilder<'a> {
             }
             Expr::LetIn(let_in_expr) => self.visit_let_in_expr(let_in_expr),
             Expr::BinOp(bin_op_expr) => self.visit_bin_op_expr(bin_op_expr, expr_ptr),
+            Expr::Conditional(cond_expr) => self.visit_cond_expr(cond_expr, expr_ptr),
         }
     }
 
@@ -280,6 +283,27 @@ impl<'a> IRBuilder<'a> {
         self.pop_ctx();
 
         dispath_closure_ptr
+    }
+
+    fn visit_cond_expr(&mut self, cond_expr: &CondExpr, expr_ptr: *const Expr) -> IRValue {
+        let cond_val = self.visit_expr(&cond_expr.cond.borrow());
+        let typ = self.get_ir_typ(expr_ptr);
+        let res_ptr = self.curr_fun().alloca(typ.clone());
+        let then_label = self.curr_fun().add_bb("then");
+        let else_label = self.curr_fun().add_bb("else");
+        let follow_label = self.curr_fun().add_bb("follow");
+        self.curr_fun()
+            .cond_brk(cond_val, then_label.clone(), else_label.clone());
+        self.curr_fun().set_bb(then_label);
+        let val = self.visit_expr(&cond_expr.yes.borrow());
+        self.curr_fun().store(val, res_ptr.clone());
+        self.curr_fun().brk(follow_label.clone());
+        self.curr_fun().set_bb(else_label);
+        let val = self.visit_expr(&cond_expr.no.borrow());
+        self.curr_fun().store(val, res_ptr.clone());
+        self.curr_fun().brk(follow_label.clone());
+        self.curr_fun().set_bb(follow_label);
+        self.curr_fun().load(typ, res_ptr)
     }
 
     fn visit_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> IRValue {

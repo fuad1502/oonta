@@ -3,6 +3,7 @@ use core::fmt::Formatter;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+use crate::ast::CondExpr;
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
@@ -91,6 +92,7 @@ impl<'a> TypeResolver<'a> {
                 self.pop_curr_context();
                 typ
             }
+            Expr::Conditional(cond_expr) => self.infer_cond_expr(cond_expr),
         };
         self.type_map.insert(expr as *const Expr, typ.clone());
         typ
@@ -116,6 +118,15 @@ impl<'a> TypeResolver<'a> {
         }
         unify_typ(ret_typ, typ);
         fun_typ
+    }
+
+    fn infer_cond_expr(&mut self, cond_expr: &CondExpr) -> Rc<RefCell<Type>> {
+        let ret_typ = self.new_var();
+        let yes_typ = self.infer_type(&cond_expr.yes.borrow());
+        let no_typ = self.infer_type(&cond_expr.no.borrow());
+        unify_typ(ret_typ.clone(), yes_typ);
+        unify_typ(ret_typ.clone(), no_typ);
+        ret_typ
     }
 
     fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> Rc<RefCell<Type>> {

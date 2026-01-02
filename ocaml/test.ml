@@ -18,4 +18,4 @@ let z =
 let rec f x = f (x - 1) + 1
 
 let a = 4 >= 4
-let b = x = 10
+let b = if a then 5 else 1

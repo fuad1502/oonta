@@ -4,6 +4,9 @@ In("in")
 Fun("fun")
 Rec("rec")
 Eq("=")
+If("if")
+Then("then")
+Else("else")
 Arrow("->")
 Plus("+")
 Minus("-")
@@ -29,7 +32,15 @@ RecFunBind = Let Rec Identifier ParamList Eq Expr;
 ParamList = ParamList Param | Param;
 Param = Identifier;
 
-Expr = Identifier | Literal | Application | BinOp | LetIn | Parenthesize | AnonymousFun;
+Expr = 
+Identifier |
+Literal |
+Application |
+BinOp |
+LetIn |
+Parenthesize |
+AnonymousFun |
+If Expr Then Expr Else Expr;
 
 AnonymousFun = Fun ParamList Arrow Expr;
 
