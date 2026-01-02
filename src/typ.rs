@@ -121,6 +121,9 @@ impl<'a> TypeResolver<'a> {
     }
 
     fn infer_cond_expr(&mut self, cond_expr: &CondExpr) -> Rc<RefCell<Type>> {
+        let bool_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Bool)));
+        let cond_typ = self.infer_type(&cond_expr.cond.borrow());
+        unify_typ(bool_typ, cond_typ);
         let ret_typ = self.new_var();
         let yes_typ = self.infer_type(&cond_expr.yes.borrow());
         let no_typ = self.infer_type(&cond_expr.no.borrow());
