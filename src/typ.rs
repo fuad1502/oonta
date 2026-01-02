@@ -65,14 +65,15 @@ type TypeResult = Result<Rc<RefCell<Type>>, Error>;
 impl<'a> TypeResolver<'a> {
     pub fn new(lexer: &'a Lexer) -> Self {
         let main_context = Rc::new(RefCell::new(Context::default()));
-        Self {
+        let resolver = Self {
             type_map: TypeMap::default(),
             main_context,
             local_context: None,
             curr_context: None,
             var_id_in_local_ctx: 0,
             lexer,
-        }
+        };
+        resolver.insert_builtins_to_main_context()
     }
 
     pub fn resolve_types(mut self, ast: &Ast) -> Result<TypeMap, Error> {
@@ -354,6 +355,17 @@ impl<'a> TypeResolver<'a> {
                 .childrens
                 .insert(expr_ptr, local_context);
         }
+    }
+
+    fn insert_builtins_to_main_context(self) -> Self {
+        let typ = Type::Fun(vec![
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))),
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Unit))),
+        ]);
+        self.main_context
+            .borrow_mut()
+            .insert("print_int", Rc::new(RefCell::new(typ)));
+        self
     }
 }
 

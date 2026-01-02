@@ -20,7 +20,7 @@ Gt(">")
 LeftParen("\(")
 RightParen("\)")
 Number("\d\d*")
-Identifier("\w\w*")
+Identifier("\w(\w|_)*")
 
 %RULES
 StmtList = StmtList Bind | Bind;

@@ -31,13 +31,14 @@ impl<'a> IRBuilder<'a> {
         let main_function = Function::new(ocaml.clone(), IRType::Void, vec![]);
         let mut module = Module::default();
         module.new_function(ocaml.clone(), main_function);
-        Self {
+        let builder = Self {
             type_map,
             lexer,
             context: Some(Context::new(ocaml)),
             module,
             anon_fun_count: 0,
-        }
+        };
+        builder.populate_builtins()
     }
 
     pub fn build(mut self, ast: &Ast) -> Module {
@@ -49,7 +50,8 @@ impl<'a> IRBuilder<'a> {
             match (&binding.name, ir_typ.is_void()) {
                 (Some(name), false) => {
                     let name = self.lexer.str_from_span(name).to_string();
-                    self.module.new_global_var(name.clone(), ir_typ.clone());
+                    self.module
+                        .new_global_var(name.clone(), ir_typ.clone(), None);
                     let global_val = IRValue::Global(name.clone(), ir_typ);
                     self.insert_name_to_ctx(name, global_val.clone());
                     self.curr_fun().store(expr_val, global_val);
@@ -112,7 +114,7 @@ impl<'a> IRBuilder<'a> {
             .iter()
             .map(|e| self.get_value_from_ctx(e))
             .collect();
-        let env_typs: Vec<IRType> = env_values.iter().map(|v| v.typ()).cloned().collect();
+        let env_typs: Vec<IRType> = env_values.iter().map(|v| v.typ()).collect();
         let closure_typ = if env_typs.is_empty() {
             IRType::Struct(vec![IRType::Ptr])
         } else {
@@ -228,7 +230,7 @@ impl<'a> IRBuilder<'a> {
             .iter()
             .map(|e| self.visit_expr(&e.borrow()))
             .collect();
-        let arg_typs: Vec<IRType> = args.iter().map(|v| v.typ()).cloned().collect();
+        let arg_typs: Vec<IRType> = args.iter().map(|v| v.typ()).collect();
         let mut env_typs = vec![closure.typ().clone()];
         env_typs.extend(arg_typs.clone());
         let dispath_closure_typ =
@@ -357,6 +359,55 @@ impl<'a> IRBuilder<'a> {
         }
     }
 
+    fn populate_builtins(mut self) -> Self {
+        // 1. Insert format strings
+        let fmt_str_name = "fmt".to_string();
+        let typ = IRType::Array(Box::new(IRType::I8), 4);
+        let init = IRValue::Pri(IRPri::Str("%d\n"));
+        self.module
+            .new_global_constant(fmt_str_name.clone(), typ, Some(init));
+
+        // 2. Insert printf declaration
+        let printf_fun_name = "printf".to_string();
+        let ret_typ = IRType::I32;
+        let params = vec![IRType::Ptr];
+        let signature = FunSignature::new(printf_fun_name.clone(), ret_typ, params, true);
+        self.module
+            .new_function_decl(printf_fun_name.clone(), signature);
+
+        // 3. Define print_int function
+        let anon_fun_name = self.new_anon_fun_name();
+        let ret_typ = IRType::Void;
+        let params = vec![(String::new(), IRType::I32)];
+        let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
+        let printf_fun_ptr = IRValue::Global(printf_fun_name, IRType::Ptr);
+        let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
+        let printf_args = vec![fmt_str_ptr, fun.param(0)];
+        fun.call(printf_fun_ptr, IRType::I32, printf_args);
+        fun.ret(IRValue::Void);
+        self.module.new_function(anon_fun_name.clone(), fun);
+
+        // 4. Insert closure
+        let closure_name = "_print_int".to_string();
+        let typ = IRType::Ptr;
+        let init = IRValue::Global(anon_fun_name, IRType::Ptr);
+        self.module
+            .new_global_constant(closure_name.clone(), typ, Some(init));
+
+        // 5. Insert global var
+        let print_int_name = "print_int".to_string();
+        let typ = IRType::Ptr;
+        let init = IRValue::Global(closure_name, IRType::Ptr);
+        self.module
+            .new_global_constant(print_int_name.clone(), typ, Some(init));
+        self.insert_name_to_ctx(
+            print_int_name.clone(),
+            IRValue::Global(print_int_name, IRType::Ptr),
+        );
+
+        self
+    }
+
     fn get_ir_typ(&self, expr_ptr: *const Expr) -> IRType {
         IRType::from(self.get_typ(expr_ptr))
     }
@@ -418,11 +469,11 @@ impl<'a> IRBuilder<'a> {
         let ret_typ = match self.module.get_function_decl("malloc") {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
-                let malloc = "malloc".to_string();
+                let name = "malloc".to_string();
                 let ret_typ = IRType::Ptr;
                 let params = vec![IRType::I64];
-                let signature = FunSignature::new(malloc.clone(), ret_typ.clone(), params);
-                self.module.new_function_decl(malloc, signature);
+                let signature = FunSignature::new(name.clone(), ret_typ.clone(), params, false);
+                self.module.new_function_decl(name, signature);
                 ret_typ
             }
         };

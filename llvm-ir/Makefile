@@ -10,7 +10,7 @@ test.o: test.s
 	clang -c test.s
 
 test.s: test.ll
-	llc test.ll
+	llc -relocation-model=pic test.ll
 
 clean:
 	rm -f main *.o *.s

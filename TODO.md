@@ -1,6 +1,6 @@
 # Oonta work items
 - [x] Add unit type & binding to unit type
-- [ ] Add print_int & print_newline
+- [x] Add print_int
 - [ ] Create top level ocaml command with "-o/--output" argument
 - [ ] Change "caml" to "caml_main" and add option to generate main function instead of caml_main ("--top")
 - [ ] Add option to compile to object code / binary using llvm ("-c/--compile")

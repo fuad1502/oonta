@@ -33,3 +33,5 @@ let c x =
     ()
 
 let () = c 2
+let d = print_int
+let () = d 2

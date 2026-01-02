@@ -9,6 +9,7 @@ use crate::{
 #[derive(Default)]
 pub struct Module {
     global_vars: Vec<GlobalVar>,
+    global_constants: Vec<GlobalVar>,
     function_defs: HashMap<String, Function>,
     function_decls: HashMap<String, FunSignature>,
 }
@@ -16,6 +17,8 @@ pub struct Module {
 pub struct GlobalVar {
     name: String,
     ir_typ: IRType,
+    init: Option<IRValue>,
+    constant: bool,
 }
 
 pub struct Function {
@@ -33,6 +36,7 @@ pub struct FunSignature {
     name: String,
     ret_typ: IRType,
     params: Vec<IRType>,
+    is_varargs: bool,
 }
 
 pub struct BasicBlock {
@@ -50,10 +54,12 @@ pub struct Instr {
 pub enum IRType {
     Void,
     I1,
+    I8,
     I32,
     I64,
     Ptr,
     Struct(Vec<IRType>),
+    Array(Box<IRType>, usize),
 }
 
 #[derive(Clone)]
@@ -87,14 +93,32 @@ pub enum IRValue {
 
 #[derive(Debug, Clone)]
 pub enum IRPri {
+    Null,
+    I8(i8),
     I32(i32),
     I64(i64),
+    Str(&'static str),
 }
 
 impl Module {
-    pub fn new_global_var(&mut self, name: String, ir_typ: IRType) {
-        let global = GlobalVar { name, ir_typ };
+    pub fn new_global_var(&mut self, name: String, ir_typ: IRType, init: Option<IRValue>) {
+        let global = GlobalVar {
+            name,
+            ir_typ,
+            init,
+            constant: false,
+        };
         self.global_vars.push(global);
+    }
+
+    pub fn new_global_constant(&mut self, name: String, ir_typ: IRType, init: Option<IRValue>) {
+        let global = GlobalVar {
+            name,
+            ir_typ,
+            init,
+            constant: true,
+        };
+        self.global_constants.push(global);
     }
 
     pub fn new_function(&mut self, name: String, function: Function) {
@@ -118,6 +142,10 @@ impl Module {
             .values()
             .try_for_each(|decl| writeln!(wr, "{decl}"))?;
         writeln!(wr)?;
+        self.global_constants
+            .iter()
+            .try_for_each(|var| writeln!(wr, "{var}"))?;
+        writeln!(wr)?;
         self.global_vars
             .iter()
             .try_for_each(|var| writeln!(wr, "{var}"))?;
@@ -132,13 +160,17 @@ impl std::fmt::Display for GlobalVar {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         let name = &self.name;
         let typ = &self.ir_typ;
-        let init = match typ {
-            IRType::I32 | IRType::I64 | IRType::I1 => "0",
-            IRType::Ptr => "null",
-            IRType::Void => todo!(),
-            IRType::Struct(_) => todo!(),
+        let init = if let Some(val) = &self.init {
+            &val.name()
+        } else {
+            match typ {
+                IRType::I32 | IRType::I64 | IRType::I1 => "0",
+                IRType::Ptr => "null",
+                _ => unreachable!(),
+            }
         };
-        write!(fmt, "@{name} = global {typ} {init}")
+        let global_or_const = if self.constant { "constant" } else { "global" };
+        write!(fmt, "@{name} = {global_or_const} {typ} {init}")
     }
 }
 
@@ -375,11 +407,12 @@ impl std::fmt::Display for Param {
 }
 
 impl FunSignature {
-    pub fn new(name: String, ret_typ: IRType, params: Vec<IRType>) -> Self {
+    pub fn new(name: String, ret_typ: IRType, params: Vec<IRType>, is_varargs: bool) -> Self {
         Self {
             name,
             ret_typ,
             params,
+            is_varargs,
         }
     }
 
@@ -394,6 +427,9 @@ impl std::fmt::Display for FunSignature {
         let name = &self.name;
         write!(fmt, "declare {ret_typ} @{name}(")?;
         write_comma_separated(&self.params, fmt)?;
+        if self.is_varargs {
+            write!(fmt, ", ...")?;
+        }
         write!(fmt, ")")
     }
 }
@@ -491,13 +527,16 @@ impl std::fmt::Display for InstrClass {
 }
 
 impl IRValue {
-    pub fn typ(&self) -> &IRType {
+    pub fn typ(&self) -> IRType {
         match self {
-            IRValue::Void => &IRType::Void,
-            IRValue::Pri(IRPri::I32(_)) => &IRType::I32,
-            IRValue::Pri(IRPri::I64(_)) => &IRType::I64,
-            IRValue::Reg(_, ir_type) => ir_type,
-            IRValue::Global(_, ir_type) => ir_type,
+            IRValue::Void => IRType::Void,
+            IRValue::Pri(IRPri::I8(_)) => IRType::I8,
+            IRValue::Pri(IRPri::I32(_)) => IRType::I32,
+            IRValue::Pri(IRPri::I64(_)) => IRType::I64,
+            IRValue::Pri(IRPri::Null) => IRType::Ptr,
+            IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
+            IRValue::Reg(_, ir_type) => ir_type.clone(),
+            IRValue::Global(_, ir_type) => ir_type.clone(),
         }
     }
 
@@ -513,8 +552,11 @@ impl IRValue {
         match self {
             IRValue::Reg(name, _) => format!("%{name}"),
             IRValue::Global(name, _) => format!("@{name}"),
+            IRValue::Pri(IRPri::Null) => "null".to_string(),
+            IRValue::Pri(IRPri::I8(val)) => val.to_string(),
             IRValue::Pri(IRPri::I32(val)) => val.to_string(),
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
+            IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
             IRValue::Void => "void".to_string(),
         }
     }
@@ -559,9 +601,11 @@ impl std::fmt::Display for IRType {
         match self {
             IRType::Void => write!(fmt, "void"),
             IRType::I1 => write!(fmt, "i1"),
+            IRType::I8 => write!(fmt, "i8"),
             IRType::I32 => write!(fmt, "i32"),
             IRType::I64 => write!(fmt, "i64"),
             IRType::Ptr => write!(fmt, "ptr"),
+            IRType::Array(typ, sz) => write!(fmt, "[{sz} x {typ}]"),
             IRType::Struct(typs) => {
                 write!(fmt, "{{")?;
                 write_comma_separated(typs, fmt)?;
@@ -574,8 +618,11 @@ impl std::fmt::Display for IRType {
 impl std::fmt::Display for IRPri {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
+            IRPri::I8(val) => write!(fmt, "i8 {val}"),
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
+            IRPri::Null => write!(fmt, "ptr null"),
+            IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
         }
     }
 }
@@ -591,4 +638,13 @@ fn write_comma_separated<T: std::fmt::Display>(
         write!(fmt, ", {item}")?;
     }
     Ok(())
+}
+
+fn hex_string(str: &str) -> String {
+    str.as_bytes()
+        .iter()
+        .map(|b| format!("\\{b:02X}"))
+        .collect::<Vec<String>>()
+        .join("")
+        + "\\00"
 }
