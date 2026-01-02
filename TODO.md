@@ -1,0 +1,15 @@
+# Oonta work items
+- [ ] Add unit type & binding to unit type
+- [ ] Add print_int & print_newline
+- [ ] Create top level ocaml command with "-o/--output" argument
+- [ ] Change "caml" to "caml_main" and add option to generate main function instead of caml_main ("--top")
+- [ ] Add option to compile to object code / binary using llvm ("-c/--compile")
+- [ ] Create test suite for driver and type inference
+- [ ] Create cargo doc & README
+- [ ] Separate jjik / jlek / oonta into separate repos
+- [ ] Release
+- [ ] Add boolean operator & short circuiting expression
+- [ ] Add char type & print_char
+- [ ] Add string type, concatenate operator, and print_string
+- [ ] Add variant type
+- [ ] Add pattern matching
