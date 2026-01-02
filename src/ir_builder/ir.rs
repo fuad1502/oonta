@@ -412,7 +412,8 @@ impl IRValue {
         match self {
             IRValue::Reg(name, _) => format!("%{name}"),
             IRValue::Global(name, _) => format!("@{name}"),
-            IRValue::Pri(irpri) => irpri.to_string(),
+            IRValue::Pri(IRPri::I32(val)) => val.to_string(),
+            IRValue::Pri(IRPri::I64(val)) => val.to_string(),
             IRValue::Void => "void".to_string(),
         }
     }

@@ -67,7 +67,6 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_fun_expr(&mut self, fun_expr: &FunExpr, expr_ptr: *const Expr) -> IRValue {
-        // TODO: Handle recursive function
         // 1. Create function
         let fun_name = self.new_anon_fun_name();
         let param_names: Vec<String> = fun_expr
