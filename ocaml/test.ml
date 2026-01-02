@@ -16,13 +16,20 @@ let z =
     x
 
 let rec f x = f (x - 1) + 1
-
 let a = 4 >= 4
 
-let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
+let rec factorial x =
+  if x <= 1 then
+    1
+  else
+    x * factorial (x - 1)
 
 let b = factorial 5
 
-let c x = if (x - 1) > 0 then () else ()
+let c x =
+  if x - 1 > 0 then
+    ()
+  else
+    ()
 
 let () = c 2
