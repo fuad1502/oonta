@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    ast::{ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, Operator},
+    ast::{ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator},
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -48,14 +48,23 @@ impl<'a> AstBuilder<'a> {
             3 => self.visit_var_bind(extract_components(&rule.components[0])),
             4 => self.visit_fun_bind(extract_components(&rule.components[0]), false),
             5 => self.visit_fun_bind(extract_components(&rule.components[0]), true),
+            6 => self.visit_unit_bind(extract_components(&rule.components[0])),
             _ => unreachable!(),
         }
+    }
+
+    fn visit_unit_bind(&mut self, components: &[Symbol]) -> Bind {
+        let expr = self.visit_expr(&components[3]);
+        Bind { name: None, expr }
     }
 
     fn visit_var_bind(&mut self, components: &[Symbol]) -> Bind {
         let name = extract_span(&components[1]).clone();
         let expr = self.visit_expr(&components[3]);
-        Bind { name, expr }
+        Bind {
+            name: Some(name),
+            expr,
+        }
     }
 
     fn visit_fun_bind(&mut self, components: &[Symbol], recursive: bool) -> Bind {
@@ -74,7 +83,10 @@ impl<'a> AstBuilder<'a> {
             None
         };
         let expr = self.new_fun_expr(expr, recursive_bind);
-        Bind { name, expr }
+        Bind {
+            name: Some(name),
+            expr,
+        }
     }
 
     fn visit_expr(&mut self, symbol: &Symbol) -> Rc<RefCell<Expr>> {
@@ -86,14 +98,14 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            12..=18 | 35..=38 => self.visit_expr(&non_terminal.rule.components[0]),
-            19 => self.visit_if_then_else_expr(&non_terminal.rule.components),
-            20 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            21 => self.visit_expr(&non_terminal.rule.components[1]),
-            22 => self.visit_let_in_expr(&non_terminal.rule.components),
-            23..=31 => self.visit_binop_expr(&non_terminal.rule.components),
-            32 => self.visit_append_application(&non_terminal.rule.components),
-            33 | 34 => self.visit_application(&non_terminal.rule.components),
+            14..=21 | 38..=41 => self.visit_expr(&non_terminal.rule.components[0]),
+            22 => self.visit_if_then_else_expr(&non_terminal.rule.components),
+            23 => self.visit_anonymous_fun(&non_terminal.rule.components),
+            24 => self.visit_expr(&non_terminal.rule.components[1]),
+            25 => self.visit_let_in_expr(&non_terminal.rule.components),
+            26..=34 => self.visit_binop_expr(&non_terminal.rule.components),
+            35 => self.visit_append_application(&non_terminal.rule.components),
+            36 | 37 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -184,6 +196,7 @@ impl<'a> AstBuilder<'a> {
         match terminal.class() {
             TerminalClass::Number => self.new_integer_expr(terminal),
             TerminalClass::Identifier => self.new_var_expr(terminal),
+            TerminalClass::Unit => self.new_unit_expr(terminal),
             _ => unreachable!(),
         }
     }
@@ -195,13 +208,13 @@ impl<'a> AstBuilder<'a> {
     fn visit_params(&self, symbol: &Symbol) -> Vec<Span> {
         let rule = extract_rule(symbol);
         match rule.number {
-            9 => {
+            11 => {
                 let mut param_list = self.visit_params(&rule.components[0]);
                 let param = self.visit_param(&rule.components[1]);
                 param_list.push(param);
                 param_list
             }
-            10 => vec![self.visit_param(&rule.components[0])],
+            12 => vec![self.visit_param(&rule.components[0])],
             _ => unreachable!(),
         }
     }
@@ -247,6 +260,12 @@ impl<'a> AstBuilder<'a> {
             span,
         };
         Rc::new(RefCell::new(Expr::Application(app_expr)))
+    }
+
+    fn new_unit_expr(&self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
+        let span = terminal.span().clone();
+        let literal_expr = LiteralExpr::Unit(span);
+        Rc::new(RefCell::new(Expr::Literal(literal_expr)))
     }
 
     fn new_integer_expr(&self, terminal: &Terminal) -> Rc<RefCell<Expr>> {

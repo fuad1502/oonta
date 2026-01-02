@@ -54,11 +54,13 @@ fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, typ::Error> {
 
 fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
     for binding in &ast.binds {
-        let name = lexer.str_from_span(&binding.name);
-        let typ = type_map
-            .get(&*binding.expr.borrow() as *const Expr)
-            .unwrap();
-        println!("{name}: {}", typ.borrow());
+        if let Some(name) = &binding.name {
+            let name = lexer.str_from_span(name);
+            let typ = type_map
+                .get(&*binding.expr.borrow() as *const Expr)
+                .unwrap();
+            println!("{name}: {}", typ.borrow());
+        }
     }
 }
 

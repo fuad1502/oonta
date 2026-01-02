@@ -21,6 +21,7 @@ pub enum Type {
 pub enum Primitive {
     Integer,
     Bool,
+    Unit,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -52,6 +53,7 @@ pub struct TypeResolver<'a> {
 
 #[derive(Debug)]
 pub enum Error {
+    CannotBindToUnit(Span, Rc<RefCell<Type>>),
     CannotInferExprType(Span, Box<Error>),
     UnboundVariable(Span),
     CannotUnifyType(Rc<RefCell<Type>>, Rc<RefCell<Type>>),
@@ -78,8 +80,15 @@ impl<'a> TypeResolver<'a> {
             self.var_id_in_local_ctx = 0;
             let typ = self.infer_type(&binding.expr.borrow())?;
             let typ = rename(typ);
-            let name = self.lexer.str_from_span(&binding.name);
-            self.main_context.borrow_mut().insert(name, typ);
+            if let Some(name) = &binding.name {
+                let name = self.lexer.str_from_span(name);
+                self.main_context.borrow_mut().insert(name, typ);
+            } else {
+                let unit_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Unit)));
+                unify_typ(unit_typ, typ.clone()).map_err(|_| {
+                    Error::CannotBindToUnit(binding.expr.borrow().span().clone(), typ)
+                })?;
+            }
         }
         Ok(self.type_map)
     }
@@ -255,6 +264,7 @@ impl<'a> TypeResolver<'a> {
             LiteralExpr::Integer(_, _) => {
                 Ok(Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))))
             }
+            LiteralExpr::Unit(_) => Ok(Rc::new(RefCell::new(Type::Primitive(Primitive::Unit)))),
         }
     }
 
@@ -463,6 +473,7 @@ impl std::fmt::Display for Type {
             Type::Primitive(primitive) => match primitive {
                 Primitive::Integer => write!(fmt, "int"),
                 Primitive::Bool => write!(fmt, "bool"),
+                Primitive::Unit => write!(fmt, "()"),
             },
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
         }
@@ -505,6 +516,13 @@ impl Context {
 impl Error {
     pub fn report(&self, lexer: &Lexer) -> String {
         match self {
+            Error::CannotBindToUnit(span, typ) => {
+                let line = lexer.show_span(span);
+                format!(
+                    "{line}\nError: cannot bind expression of type {} to ()",
+                    typ.borrow()
+                )
+            }
             Error::CannotInferExprType(span, e) => {
                 let line = lexer.show_span(span);
                 format!(

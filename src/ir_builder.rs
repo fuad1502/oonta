@@ -42,13 +42,24 @@ impl<'a> IRBuilder<'a> {
 
     pub fn build(mut self, ast: &Ast) -> Module {
         for binding in &ast.binds {
-            let name = self.lexer.str_from_span(&binding.name).to_string();
-            let ir_typ = self.get_ir_typ(&*binding.expr.borrow() as *const Expr);
-            self.module.new_global_var(name.clone(), ir_typ.clone());
-            let global_val = IRValue::Global(name.clone(), ir_typ);
-            self.insert_name_to_ctx(name, global_val.clone());
             let expr_val = self.visit_expr(&binding.expr.borrow());
-            self.curr_fun().store(expr_val, global_val);
+            let ir_typ = expr_val.typ().clone();
+
+            // TODO: better void handling
+            match (&binding.name, ir_typ.is_void()) {
+                (Some(name), false) => {
+                    let name = self.lexer.str_from_span(name).to_string();
+                    self.module.new_global_var(name.clone(), ir_typ.clone());
+                    let global_val = IRValue::Global(name.clone(), ir_typ);
+                    self.insert_name_to_ctx(name, global_val.clone());
+                    self.curr_fun().store(expr_val, global_val);
+                }
+                (Some(name), true) => {
+                    let name = self.lexer.str_from_span(name).to_string();
+                    self.insert_name_to_ctx(name, IRValue::Void);
+                }
+                (None, _) => (),
+            }
         }
         self.curr_fun().ret(IRValue::Void);
         self.module
@@ -342,6 +353,7 @@ impl<'a> IRBuilder<'a> {
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {
         match literal_expr {
             LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I32(*value)),
+            LiteralExpr::Unit(_) => IRValue::Void,
         }
     }
 

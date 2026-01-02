@@ -36,7 +36,7 @@ pub struct Ast {
 
 #[derive(Debug)]
 pub struct Bind {
-    pub name: Span,
+    pub name: Option<Span>,
     pub expr: Rc<RefCell<Expr>>,
 }
 
@@ -54,6 +54,7 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub enum LiteralExpr {
     Integer(i32, Span),
+    Unit(Span),
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +130,7 @@ impl Expr {
     pub fn span(&self) -> &Span {
         match self {
             Expr::Literal(LiteralExpr::Integer(_, span)) => span,
+            Expr::Literal(LiteralExpr::Unit(span)) => span,
             Expr::Var(VarExpr { id }) => id,
             Expr::Fun(FunExpr { span, .. }) => span,
             Expr::Application(ApplicationExpr { span, .. }) => span,

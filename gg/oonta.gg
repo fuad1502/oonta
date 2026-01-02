@@ -8,6 +8,7 @@ If("if")
 Then("then")
 Else("else")
 Arrow("->")
+Unit("\(\)")
 Plus("+")
 Minus("-")
 Star("\*")
@@ -22,17 +23,19 @@ Number("\d\d*")
 Identifier("\w\w*")
 
 %RULES
-StmtList = StmtList Decl | Decl;
+StmtList = StmtList Bind | Bind;
 
-Decl = VarBind | FunBind | RecFunBind;
+Bind = VarBind | FunBind | RecFunBind | UnitBind;
 VarBind = Let Identifier Eq Expr;
 FunBind = Let Identifier ParamList Eq Expr;
 RecFunBind = Let Rec Identifier ParamList Eq Expr;
+UnitBind = Let Unit Eq Expr;
 
 ParamList = ParamList Param | Param;
 Param = Identifier;
 
 Expr = 
+Unit |
 Identifier |
 Literal |
 Application |

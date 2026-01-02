@@ -227,6 +227,10 @@ impl Function {
     }
 
     pub fn load(&mut self, typ: IRType, src: IRValue) -> IRValue {
+        // TODO: better void handling
+        if typ.is_void() {
+            return IRValue::Void;
+        }
         let res_name = self.new_name("");
         let instr = Instr {
             class: InstrClass::Load(typ.clone(), src),
@@ -237,6 +241,10 @@ impl Function {
     }
 
     pub fn store(&mut self, src: IRValue, dst: IRValue) {
+        // TODO: better void handling
+        if src.is_void() || dst.is_void() {
+            return;
+        }
         let instr = Instr {
             class: InstrClass::Store(src, dst),
             res: IRValue::Void,
@@ -253,16 +261,25 @@ impl Function {
     }
 
     pub fn call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
-        let res_name = self.new_name("");
+        let res = if typ.is_void() {
+            IRValue::Void
+        } else {
+            let res_name = self.new_name("");
+            IRValue::Reg(res_name, typ.clone())
+        };
         let instr = Instr {
-            class: InstrClass::Call(fun, typ.clone(), args),
-            res: IRValue::Reg(res_name, typ),
+            class: InstrClass::Call(fun, typ, args),
+            res,
         };
         self.push_instr(instr.clone());
         instr.value()
     }
 
     pub fn alloca(&mut self, typ: IRType) -> IRValue {
+        // TODO: better void handling
+        if typ.is_void() {
+            return IRValue::Void;
+        }
         let res_name = self.new_name("");
         let instr = Instr {
             class: InstrClass::Alloca(typ),
@@ -501,6 +518,10 @@ impl IRValue {
             IRValue::Void => "void".to_string(),
         }
     }
+
+    fn is_void(&self) -> bool {
+        matches!(self, IRValue::Void)
+    }
 }
 
 impl std::fmt::Display for IRValue {
@@ -514,12 +535,19 @@ impl std::fmt::Display for IRValue {
     }
 }
 
+impl IRType {
+    pub fn is_void(&self) -> bool {
+        matches!(self, IRType::Void)
+    }
+}
+
 impl From<Type> for IRType {
     fn from(typ: Type) -> Self {
         match typ {
             Type::Fun(_) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I32,
             Type::Primitive(Primitive::Bool) => IRType::I1,
+            Type::Primitive(Primitive::Unit) => IRType::Void,
             Type::Variable(Variable::Unbound(_)) => todo!(),
             Type::Variable(Variable::Link(_)) => panic!(""),
         }
