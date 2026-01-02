@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     ast::{ApplicationExpr, Ast, Expr},
     symbol::Span,
-    typ::{Type, TypeMap, extract_fun_typs, normalize_typ},
+    typ::{TypeMap, extract_fun_typs, normalize_typ},
 };
 
 pub fn transform_applications(ast: &Ast, type_map: &mut TypeMap) {
