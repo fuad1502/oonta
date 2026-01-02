@@ -116,6 +116,11 @@ impl<'a> IRBuilder<'a> {
             self.insert_name_to_ctx(name.to_string(), val);
         }
 
+        // > insert recursive name to context
+        if let Some(name) = &fun_expr.recursive_bind {
+            self.insert_name_to_ctx(name.to_string(), env_ptr);
+        }
+
         // 3. Create function body
         let value = self.visit_expr(&fun_expr.body.borrow());
         self.curr_fun().ret(value);

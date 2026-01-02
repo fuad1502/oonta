@@ -14,6 +14,7 @@ pub struct AstBuilder<'a> {
 struct ClosureCtx {
     parent: Option<Box<ClosureCtx>>,
     params: Vec<Span>,
+    recursive_name: Option<Span>,
     captures: Vec<String>,
 }
 
@@ -67,7 +68,7 @@ impl<'a> AstBuilder<'a> {
 
         let name = extract_span(&components[name_idx]).clone();
         let params = self.visit_params(&components[params_idx]);
-        self.push_closure_ctx(params);
+        self.push_closure_ctx(params, Some(name.clone()));
         let expr = self.visit_expr(&components[expr_idx]);
 
         let recursive_bind = if recursive {
@@ -122,7 +123,7 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         let params = self.visit_params(&components[1]);
-        self.push_closure_ctx(params);
+        self.push_closure_ctx(params, None);
         let expr = self.visit_expr(&components[3]);
         self.new_fun_expr(expr, None)
     }
@@ -264,7 +265,8 @@ impl<'a> AstBuilder<'a> {
     fn new_var_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         let name = self.lexer.get_lexeme(terminal);
         if let Some(ctx) = &mut self.current_closure_ctx
-            && !ctx.is_name_in_params(name, self.lexer)
+            && !ctx.is_in_params(name, self.lexer)
+            && !ctx.is_recursive_name(name, self.lexer)
         {
             ctx.captures.push(name.to_string());
         }
@@ -272,11 +274,12 @@ impl<'a> AstBuilder<'a> {
         Rc::new(RefCell::new(Expr::var(id)))
     }
 
-    fn push_closure_ctx(&mut self, params: Vec<Span>) {
+    fn push_closure_ctx(&mut self, params: Vec<Span>, recursive_name: Option<Span>) {
         let parent = self.current_closure_ctx.take().map(Box::new);
         self.current_closure_ctx = Some(ClosureCtx {
             parent,
             params,
+            recursive_name,
             captures: vec![],
         });
     }
@@ -319,9 +322,19 @@ fn extract_rule(symbol: &Symbol) -> &Rule {
 }
 
 impl ClosureCtx {
-    fn is_name_in_params(&self, name: &str, lexer: &Lexer) -> bool {
+    fn is_in_params(&self, name: &str, lexer: &Lexer) -> bool {
         for param in &self.params {
             if lexer.str_from_span(param) == name {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn is_recursive_name(&self, name: &str, lexer: &Lexer) -> bool {
+        if let Some(span) = &self.recursive_name {
+            let recursive_name = lexer.str_from_span(span);
+            if name == recursive_name {
                 return true;
             }
         }
