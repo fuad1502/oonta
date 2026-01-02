@@ -15,4 +15,4 @@ let z =
        3)
     x
 
-let rec f x = f (x - 1)
+let rec f x = f (x - 1) + 1
