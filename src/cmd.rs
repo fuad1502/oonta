@@ -12,6 +12,7 @@ pub enum CmdOptions {
     TopLevel,
     Compile,
     Exec,
+    Verbose,
 }
 
 #[derive(Debug)]
@@ -57,6 +58,7 @@ Options:
   -e, --exec                    Compile LLVM IR to executable. Turning this
                                 option on implicitly turns on both '-t' and
                                 '-c' options.
+  -v, --verbose                 Print steps.
 "#
 }
 
@@ -99,6 +101,7 @@ impl TryFrom<&str> for CmdOptions {
             "top-level" => Ok(Self::TopLevel),
             "compile" => Ok(Self::Compile),
             "exec" => Ok(Self::Exec),
+            "verbose" => Ok(Self::Verbose),
             _ => Err(CmdError::UnknownOption(format!("--{value}"))),
         }
     }
@@ -114,6 +117,7 @@ impl TryFrom<char> for CmdOptions {
             't' => Ok(Self::TopLevel),
             'c' => Ok(Self::Compile),
             'e' => Ok(Self::Exec),
+            'v' => Ok(Self::Verbose),
             _ => Err(CmdError::UnknownOption(format!("-{value}"))),
         }
     }
@@ -127,6 +131,7 @@ impl CmdOptions {
             CmdOptions::TopLevel => false,
             CmdOptions::Compile => false,
             CmdOptions::Exec => false,
+            CmdOptions::Verbose => false,
         }
     }
 }

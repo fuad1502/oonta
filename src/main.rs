@@ -42,6 +42,9 @@ fn main() -> ExitCode {
     if cmd.options.contains_key(&CmdOptions::Exec) {
         compile_options.push(CompileOptions::CreateExecutable);
     }
+    if cmd.options.contains_key(&CmdOptions::Verbose) {
+        compile_options.push(CompileOptions::DebugPhases);
+    }
 
     match oonta::driver::compile(&src_file, &out_file, &compile_options) {
         Ok(()) => ExitCode::SUCCESS,
