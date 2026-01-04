@@ -1,6 +1,8 @@
+mod ast_printer;
+
 use std::{cell::RefCell, rc::Rc};
 
-use crate::symbol::Span;
+use crate::{ast::ast_printer::AstPrinter, lexer::Lexer, symbol::Span};
 
 // let x = 5
 // Bind("x", LiteralExpr(5))
@@ -29,18 +31,15 @@ use crate::symbol::Span;
 //     )
 // )
 
-#[derive(Debug)]
 pub struct Ast {
     pub binds: Vec<Bind>,
 }
 
-#[derive(Debug)]
 pub struct Bind {
     pub name: Option<Span>,
     pub expr: Rc<RefCell<Expr>>,
 }
 
-#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(LiteralExpr),
     Var(VarExpr),
@@ -51,18 +50,15 @@ pub enum Expr {
     Conditional(CondExpr),
 }
 
-#[derive(Debug, Clone)]
 pub enum LiteralExpr {
     Integer(i32, Span),
     Unit(Span),
 }
 
-#[derive(Debug, Clone)]
 pub struct VarExpr {
     pub id: Span,
 }
 
-#[derive(Debug, Clone)]
 pub struct FunExpr {
     pub params: Vec<Span>,
     pub body: Rc<RefCell<Expr>>,
@@ -71,21 +67,18 @@ pub struct FunExpr {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
 pub struct ApplicationExpr {
     pub fun: Rc<RefCell<Expr>>,
     pub binds: Vec<Rc<RefCell<Expr>>>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
 pub struct LetInExpr {
     pub bind: (Span, Rc<RefCell<Expr>>),
     pub expr: Rc<RefCell<Expr>>,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
 pub struct BinOpExpr {
     pub op: Operator,
     pub lhs: Rc<RefCell<Expr>>,
@@ -93,7 +86,6 @@ pub struct BinOpExpr {
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
 pub struct CondExpr {
     pub cond: Rc<RefCell<Expr>>,
     pub yes: Rc<RefCell<Expr>>,
@@ -101,7 +93,7 @@ pub struct CondExpr {
     pub span: Span,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub enum Operator {
     Plus,
     Minus,
@@ -166,5 +158,28 @@ impl Expr {
 
     pub fn binop(op: Operator, lhs: Rc<RefCell<Expr>>, rhs: Rc<RefCell<Expr>>, span: Span) -> Self {
         Self::BinOp(BinOpExpr { op, lhs, rhs, span })
+    }
+}
+
+impl Ast {
+    pub fn pretty_print(&self, lexer: &Lexer) {
+        let printer = AstPrinter::new(lexer);
+        printer.pretty_print(self);
+    }
+}
+
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operator::Plus => write!(f, "+"),
+            Operator::Minus => write!(f, "-"),
+            Operator::Star => write!(f, "*"),
+            Operator::Slash => write!(f, "/"),
+            Operator::Eq => write!(f, "="),
+            Operator::Lte => write!(f, "<="),
+            Operator::Lt => write!(f, "<"),
+            Operator::Gte => write!(f, ">="),
+            Operator::Gt => write!(f, ">"),
+        }
     }
 }

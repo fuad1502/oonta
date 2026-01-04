@@ -71,6 +71,9 @@ impl Driver {
 
         self.dbg_start("Build AST");
         let ast = build_ast(&lexer, &cst_root);
+        if self.debug_phases {
+            ast.pretty_print(&lexer);
+        }
         self.dbg_end();
 
         self.dbg_start("Resolve types");
