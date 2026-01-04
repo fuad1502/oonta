@@ -4,33 +4,6 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{ast::ast_printer::AstPrinter, lexer::Lexer, symbol::Span};
 
-// let x = 5
-// Bind("x", LiteralExpr(5))
-//
-// let add a b = a + b + x
-// Bind("add",
-//     FunExpr::Anonymous(
-//         ["a", "b"],
-//         BinOpExpr("+", BinOpExpr("+", VarExpr("a"), VarExpr("b")), "x")
-//     )
-// )
-//
-// let addthree = add 3
-// Bind("addthree",
-//     ApplicationExpr(
-//         FunExpr::Identifier("add"),
-//         [("a", LiteralExpr(3))]
-//     )
-// )
-//
-// let y = add x x
-// Bind("y",
-//     ApplicationExpr(
-//         FunExpr::Identifier("add"),
-//         [("a", VarExpr("x")), ("b", VarExpr("x"))]
-//     )
-// )
-
 pub struct Ast {
     pub binds: Vec<Bind>,
 }
