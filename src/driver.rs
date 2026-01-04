@@ -24,7 +24,12 @@ pub enum CompileOptions {
 }
 
 pub fn compile(src_path: &Path, out_path: &Path, options: &[CompileOptions]) -> Result<(), String> {
-    let mut lexer = Lexer::new(src_path).map_err(|e| e.to_string())?;
+    let mut lexer = Lexer::new(src_path).map_err(|e| {
+        format!(
+            "Error: unable to open input file \"{}\": {e}",
+            src_path.to_str().unwrap()
+        )
+    })?;
     let cst_root = parse(&mut lexer)?;
     let ast = build_ast(&lexer, &cst_root);
     let mut type_map = match resolve_types(&lexer, &ast) {
