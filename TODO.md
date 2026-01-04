@@ -4,7 +4,8 @@
 - [x] Create top level ocaml command with "-o/--output" argument
 - [x] Change "caml" to "caml_main" and add option to generate main function instead of caml_main ("--top")
 - [x] Add option to compile to object code / binary using llvm ("-c/--compile")
-- [ ] Add debug phases option
+- [x] Add debug phases option
+- [ ] Pretty print AST
 - [ ] Create test suite for driver and type inference
 - [ ] Create cargo doc & README
 - [ ] Separate jjik / jlek / oonta into separate repos
