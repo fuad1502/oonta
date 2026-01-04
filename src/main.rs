@@ -1,6 +1,10 @@
 use std::{env, path::PathBuf, process::ExitCode};
 
-use oonta::{cmd::CmdOptions, driver::CompileOptions};
+use oonta::{
+    cmd::CmdOptions,
+    driver::CompileOptions,
+    terminal_colors::{END, RED},
+};
 
 fn main() -> ExitCode {
     let cmd = match oonta::cmd::parse_arguments(env::args()) {
@@ -17,11 +21,11 @@ fn main() -> ExitCode {
     }
 
     if cmd.free_args.len() < 2 {
-        eprintln!("Error: no input file");
+        eprintln!("{RED}Error{END}: no input file");
         return ExitCode::FAILURE;
     }
     if cmd.free_args.len() > 2 {
-        eprintln!("Error: oonta only accepts a single input file");
+        eprintln!("{RED}Error{END}: oonta only accepts a single input file");
         return ExitCode::FAILURE;
     }
     let src_file = PathBuf::from(&cmd.free_args[1]);

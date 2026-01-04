@@ -1,3 +1,4 @@
+use crate::terminal_colors::{END, RED};
 use std::{collections::HashMap, env::Args};
 
 pub struct Cmd {
@@ -142,13 +143,13 @@ impl std::fmt::Display for CmdError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CmdError::OptionExpectedArgument(arg) => {
-                write!(f, "Error: option \"{arg}\" expected an argument")
+                write!(f, "{RED}Error{END}: option \"{arg}\" expected an argument")
             }
             CmdError::UnknownOption(arg) => write!(f, "Error: unknown option \"{arg}\""),
             CmdError::SingleDashLongOption(arg) => {
                 write!(
                     f,
-                    "Error: singe dash options (\"{arg}\") only accepts a single character"
+                    "{RED}Error{END}: singe dash options (\"{arg}\") only accepts a single character"
                 )
             }
         }

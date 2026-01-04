@@ -9,4 +9,5 @@ mod lexer;
 mod parser;
 #[allow(unused)]
 mod symbol;
+pub mod terminal_colors;
 mod typ;

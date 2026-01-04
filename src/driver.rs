@@ -14,6 +14,7 @@ use crate::{
     lexer::Lexer,
     parser::Parser,
     symbol::Symbol,
+    terminal_colors::{BLUE, END, GREEN, RED, YELLOW},
     typ::{self, TypeMap, TypeResolver},
 };
 
@@ -59,7 +60,7 @@ impl Driver {
         self.dbg_start("Lexing & Parsing");
         let mut lexer = Lexer::new(src_path).map_err(|e| {
             format!(
-                "Error: unable to open input file \"{}\": {e}",
+                "{RED}Error{END}: unable to open input file \"{}\": {e}",
                 src_path.to_str().unwrap()
             )
         })?;
@@ -110,14 +111,18 @@ impl Driver {
         if self.debug_phases {
             self.step = step;
             self.start_time = Instant::now();
-            println!("=> {step} Start");
+            println!("{GREEN}=> {step} Start{END}");
         }
     }
 
     fn dbg_end(&mut self) {
         if self.debug_phases {
             let duration = self.start_time.elapsed();
-            println!("=> {} End ({} ms)", self.step, duration.as_millis());
+            println!(
+                "{GREEN}=> {} End ({} ms){END}",
+                self.step,
+                duration.as_millis()
+            );
             self.step = "";
         }
     }
@@ -139,7 +144,6 @@ fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, typ::Error> {
 }
 
 fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
-    println!();
     println!("Top level bindings:");
     for binding in &ast.binds {
         if let Some(name) = &binding.name {
@@ -147,10 +151,9 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
             let typ = type_map
                 .get(&*binding.expr.borrow() as *const Expr)
                 .unwrap();
-            println!("{name}: {}", typ.borrow());
+            println!("{YELLOW}{name}{END}: {BLUE}{}{END}", typ.borrow());
         }
     }
-    println!();
 }
 
 fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer, is_top_level: bool) -> Module {

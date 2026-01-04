@@ -8,6 +8,7 @@ use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
     symbol::Span,
+    terminal_colors::{END, RED},
 };
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -531,14 +532,14 @@ impl Error {
             Error::CannotBindToUnit(span, typ) => {
                 let line = lexer.show_span(span);
                 format!(
-                    "{line}\nError: cannot bind expression of type {} to ()",
+                    "{line}\n{RED}Error{END}: cannot bind expression of type {} to ()",
                     typ.borrow()
                 )
             }
             Error::CannotInferExprType(span, e) => {
                 let line = lexer.show_span(span);
                 format!(
-                    "{line}\nError: cannot infer expression type: {}",
+                    "{line}\n{RED}Error{END}: cannot infer expression type: {}",
                     e.report(lexer)
                 )
             }

@@ -3,6 +3,7 @@ use crate::{
         ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr,
     },
     lexer::Lexer,
+    terminal_colors::{BLUE, END, YELLOW},
 };
 
 pub struct AstPrinter<'a> {
@@ -25,7 +26,7 @@ impl<'a> AstPrinter<'a> {
             } else {
                 "()"
             };
-            println!("{name} = ");
+            println!("{YELLOW}{name}{END} = ");
             self.pretty_print_expr(&binding.expr.borrow());
             println!();
             self.indent = String::new();
@@ -47,7 +48,7 @@ impl<'a> AstPrinter<'a> {
     }
 
     fn pretty_print_fun_expr(&mut self, fun_expr: &FunExpr) {
-        println!("{}FunExpr", self.indent);
+        println!("{}{BLUE}FunExpr{END}", self.indent);
         let parameters = fun_expr
             .params
             .iter()
@@ -73,7 +74,7 @@ impl<'a> AstPrinter<'a> {
     }
 
     pub fn pretty_print_application_expr(&mut self, application_expr: &ApplicationExpr) {
-        println!("{}ApplicationExpr", self.indent);
+        println!("{}{BLUE}ApplicationExpr{END}", self.indent);
         println!("{}├─▸ function:", self.indent);
         let orig_indent = self.indent.clone();
         self.indent += "│   ";
@@ -94,7 +95,7 @@ impl<'a> AstPrinter<'a> {
     }
 
     fn pretty_print_bin_op_expr(&mut self, bin_op_expr: &BinOpExpr) {
-        println!("{}BinOpExpr", self.indent);
+        println!("{}{BLUE}BinOpExpr{END}", self.indent);
         println!("{}├─▸ operator: {}", self.indent, bin_op_expr.op);
         println!("{}├─▸ lhs:", self.indent);
         let orig_indent = self.indent.clone();
@@ -107,7 +108,7 @@ impl<'a> AstPrinter<'a> {
     }
 
     fn pretty_print_cond_expr(&mut self, cond_expr: &CondExpr) {
-        println!("{}CondExpr", self.indent);
+        println!("{}{BLUE}CondExpr{END}", self.indent);
         println!("{}├─▸ condition:", self.indent);
         let orig_indent = self.indent.clone();
         self.indent += "│   ";
@@ -124,7 +125,7 @@ impl<'a> AstPrinter<'a> {
 
     fn pretty_print_let_in_expr(&mut self, let_in_expr: &LetInExpr) {
         let bind_name = self.lexer.str_from_span(&let_in_expr.bind.0);
-        println!("{}LetInExpr", self.indent);
+        println!("{}{BLUE}LetInExpr{END}", self.indent);
         println!("{}├─▸ bind name: {bind_name}", self.indent);
         println!("{}├─▸ bind value:", self.indent);
         let orig_indent = self.indent.clone();
@@ -138,7 +139,7 @@ impl<'a> AstPrinter<'a> {
 
     fn pretty_print_var_expr(&mut self, var_expr: &VarExpr) {
         let var = self.lexer.str_from_span(&var_expr.id);
-        println!("{}VarExpr (\"{var}\")", self.indent);
+        println!("{}{BLUE}VarExpr{END} (\"{var}\")", self.indent);
     }
 
     fn pretty_print_literal_expr(&mut self, literal_expr: &LiteralExpr) {
@@ -146,6 +147,6 @@ impl<'a> AstPrinter<'a> {
             LiteralExpr::Integer(val, _) => val.to_string(),
             LiteralExpr::Unit(_) => "unit".to_string(),
         };
-        println!("{}LiteralExpr ({value})", self.indent,);
+        println!("{}{BLUE}LiteralExpr{END} ({value})", self.indent,);
     }
 }
