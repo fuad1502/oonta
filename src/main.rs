@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf, process::ExitCode};
 
-use oonta::cmd::CmdOptions;
+use oonta::{cmd::CmdOptions, driver::CompileOptions};
 
 fn main() -> ExitCode {
     let cmd = match oonta::cmd::parse_arguments(env::args()) {
@@ -32,7 +32,18 @@ fn main() -> ExitCode {
         src_file.with_extension("ll")
     };
 
-    match oonta::driver::compile(&src_file, &out_file) {
+    let mut compile_options = vec![];
+    if cmd.options.contains_key(&CmdOptions::TopLevel) {
+        compile_options.push(CompileOptions::TopLevel);
+    }
+    if cmd.options.contains_key(&CmdOptions::Compile) {
+        compile_options.push(CompileOptions::CreateObjFile);
+    }
+    if cmd.options.contains_key(&CmdOptions::Exec) {
+        compile_options.push(CompileOptions::CreateExecutable);
+    }
+
+    match oonta::driver::compile(&src_file, &out_file, &compile_options) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{e}");

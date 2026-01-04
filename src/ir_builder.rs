@@ -26,15 +26,19 @@ struct Context {
 }
 
 impl<'a> IRBuilder<'a> {
-    pub fn new(type_map: &'a TypeMap, lexer: &'a Lexer) -> Self {
-        let ocaml = "ocaml".to_string();
-        let main_function = Function::new(ocaml.clone(), IRType::Void, vec![]);
+    pub fn new(type_map: &'a TypeMap, lexer: &'a Lexer, is_top_level: bool) -> Self {
+        let main_fun_name = if is_top_level {
+            "main".to_string()
+        } else {
+            "caml_main".to_string()
+        };
+        let main_function = Function::new(main_fun_name.clone(), IRType::Void, vec![]);
         let mut module = Module::default();
-        module.new_function(ocaml.clone(), main_function);
+        module.new_function(main_fun_name.clone(), main_function);
         let builder = Self {
             type_map,
             lexer,
-            context: Some(Context::new(ocaml)),
+            context: Some(Context::new(main_fun_name)),
             module,
             anon_fun_count: 0,
         };

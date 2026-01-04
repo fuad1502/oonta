@@ -9,6 +9,9 @@ pub struct Cmd {
 pub enum CmdOptions {
     Help,
     OutputPath,
+    TopLevel,
+    Compile,
+    Exec,
 }
 
 #[derive(Debug)]
@@ -41,6 +44,7 @@ pub fn parse_arguments(args: Args) -> Result<Cmd, CmdError> {
 }
 
 pub fn print_help() -> &'static str {
+    // TODO: Refactor option names
     r#"OCaml to LLVM IR compiler
 
 Usage: oonta [OPTIONS] <file>
@@ -48,6 +52,11 @@ Usage: oonta [OPTIONS] <file>
 Options:
   -h, --help                    Display this information. 
   -o <file>, --output <file>    Write output to file.
+  -t, --top-level               Output main function instead of caml_main.
+  -c, --compile                 Compile LLVM IR to object file using LLVM.
+  -e, --exec                    Compile LLVM IR to executable. Turning this
+                                option on implicitly turns on both '-t' and
+                                '-c' options.
 "#
 }
 
@@ -87,6 +96,9 @@ impl TryFrom<&str> for CmdOptions {
         match value {
             "help" => Ok(Self::Help),
             "output" => Ok(Self::OutputPath),
+            "top-level" => Ok(Self::TopLevel),
+            "compile" => Ok(Self::Compile),
+            "exec" => Ok(Self::Exec),
             _ => Err(CmdError::UnknownOption(format!("--{value}"))),
         }
     }
@@ -99,6 +111,9 @@ impl TryFrom<char> for CmdOptions {
         match value {
             'h' => Ok(Self::Help),
             'o' => Ok(Self::OutputPath),
+            't' => Ok(Self::TopLevel),
+            'c' => Ok(Self::Compile),
+            'e' => Ok(Self::Exec),
             _ => Err(CmdError::UnknownOption(format!("-{value}"))),
         }
     }
@@ -109,6 +124,9 @@ impl CmdOptions {
         match self {
             CmdOptions::OutputPath => true,
             CmdOptions::Help => false,
+            CmdOptions::TopLevel => false,
+            CmdOptions::Compile => false,
+            CmdOptions::Exec => false,
         }
     }
 }

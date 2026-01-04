@@ -1,4 +1,9 @@
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{
+    fs::File,
+    io::BufWriter,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::{
     application_visitor::transform_applications,
@@ -11,7 +16,14 @@ use crate::{
     typ::{self, TypeMap, TypeResolver},
 };
 
-pub fn compile(src_path: &Path, out_path: &Path) -> Result<(), String> {
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub enum CompileOptions {
+    TopLevel,
+    CreateObjFile,
+    CreateExecutable,
+}
+
+pub fn compile(src_path: &Path, out_path: &Path, options: &[CompileOptions]) -> Result<(), String> {
     let mut lexer = Lexer::new(src_path).map_err(|e| e.to_string())?;
     let cst_root = parse(&mut lexer)?;
     let ast = build_ast(&lexer, &cst_root);
@@ -21,8 +33,18 @@ pub fn compile(src_path: &Path, out_path: &Path) -> Result<(), String> {
     };
     transform_applications(&ast, &mut type_map);
     print_global_types(&ast, &type_map, &lexer);
-    let module = build_module(&ast, &type_map, &lexer);
+    let is_create_executable = options.contains(&CompileOptions::CreateExecutable);
+    let is_create_objfile = options.contains(&CompileOptions::CreateObjFile);
+    let is_top_level = options.contains(&CompileOptions::TopLevel);
+    let is_top_level = is_top_level || is_create_executable;
+    let module = build_module(&ast, &type_map, &lexer, is_top_level);
     write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
+    if is_create_objfile || is_create_executable {
+        let obj_file = create_obj_file(out_path)?;
+        if is_create_executable {
+            let _ = create_executable(&obj_file)?;
+        }
+    }
     Ok(())
 }
 
@@ -53,8 +75,8 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
     }
 }
 
-fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) -> Module {
-    let ir_builder = IRBuilder::new(type_map, lexer);
+fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer, is_top_level: bool) -> Module {
+    let ir_builder = IRBuilder::new(type_map, lexer, is_top_level);
     ir_builder.build(ast)
 }
 
@@ -62,4 +84,39 @@ fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
     let file = File::create(path)?;
     let wr = BufWriter::new(file);
     module.serialize(Box::new(wr))
+}
+
+fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
+    let mut cmd = Command::new("llc");
+    let obj_file = path.with_extension("o");
+    cmd.args([
+        "-relocation-model=pic",
+        "--filetype=obj",
+        "-o",
+        obj_file.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(obj_file)
+}
+
+fn create_executable(path: &Path) -> Result<PathBuf, String> {
+    let mut cmd = Command::new("clang");
+    let executable = path.with_extension("out");
+    cmd.args(["-o", executable.to_str().unwrap(), path.to_str().unwrap()]);
+    execute_command(cmd)?;
+    Ok(executable)
+}
+
+fn execute_command(mut cmd: Command) -> Result<(), String> {
+    let error_message = format!("Error: failed to execute command ({cmd:?})");
+    let output = cmd.output().map_err(|e| format!("{error_message}: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{error_message}:\nStdout:\n{}Stderr:\n{}",
+            str::from_utf8(&output.stdout).unwrap(),
+            str::from_utf8(&output.stderr).unwrap()
+        ));
+    }
+    Ok(())
 }
