@@ -1,14 +1,42 @@
-use std::path::PathBuf;
+use std::{env, path::PathBuf, process::ExitCode};
 
-fn main() {
-    let src_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("ocaml")
-        .join("test.ml");
-    let out_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("llvm-ir")
-        .join("test.ll");
-    match oonta::compile(&src_file, &out_file) {
-        Ok(()) => (),
-        Err(e) => eprintln!("{e}"),
+use oonta::cmd::CmdOptions;
+
+fn main() -> ExitCode {
+    let cmd = match oonta::cmd::parse_arguments(env::args()) {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if cmd.options.contains_key(&CmdOptions::Help) {
+        println!("{}", oonta::cmd::print_help());
+        return ExitCode::SUCCESS;
+    }
+
+    if cmd.free_args.len() < 2 {
+        eprintln!("Error: no input file");
+        return ExitCode::FAILURE;
+    }
+    if cmd.free_args.len() > 2 {
+        eprintln!("Error: oonta only accepts a single input file");
+        return ExitCode::FAILURE;
+    }
+    let src_file = PathBuf::from(&cmd.free_args[1]);
+
+    let out_file = if let Some(Some(path)) = cmd.options.get(&CmdOptions::OutputPath) {
+        PathBuf::from(path)
+    } else {
+        src_file.with_extension("ll")
+    };
+
+    match oonta::driver::compile(&src_file, &out_file) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
     }
 }
