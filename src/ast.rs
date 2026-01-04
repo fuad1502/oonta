@@ -168,6 +168,13 @@ impl Ast {
     }
 }
 
+impl ApplicationExpr {
+    pub fn pretty_print(&self, lexer: &Lexer) {
+        let mut printer = AstPrinter::new(lexer);
+        printer.pretty_print_application_expr(self);
+    }
+}
+
 impl std::fmt::Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -56,16 +56,13 @@ pub fn compile(src_path: &Path, out_path: &Path, options: &[CompileOptions]) -> 
 
 impl Driver {
     fn compile(mut self, src_path: &Path, out_path: &Path) -> Result<(), String> {
-        self.dbg_start("Lexing");
+        self.dbg_start("Lexing & Parsing");
         let mut lexer = Lexer::new(src_path).map_err(|e| {
             format!(
                 "Error: unable to open input file \"{}\": {e}",
                 src_path.to_str().unwrap()
             )
         })?;
-        self.dbg_end();
-
-        self.dbg_start("Parsing");
         let cst_root = parse(&mut lexer)?;
         self.dbg_end();
 
@@ -87,7 +84,7 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Transform application expressions");
-        transform_applications(&ast, &mut type_map, self.debug_phases);
+        transform_applications(&ast, &mut type_map, &lexer, self.debug_phases);
         self.dbg_end();
 
         self.dbg_start("Build LLVM module");

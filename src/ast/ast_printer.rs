@@ -72,7 +72,7 @@ impl<'a> AstPrinter<'a> {
         self.pretty_print_expr(&fun_expr.body.borrow());
     }
 
-    fn pretty_print_application_expr(&mut self, application_expr: &ApplicationExpr) {
+    pub fn pretty_print_application_expr(&mut self, application_expr: &ApplicationExpr) {
         println!("{}ApplicationExpr", self.indent);
         println!("{}├─▸ function:", self.indent);
         let orig_indent = self.indent.clone();

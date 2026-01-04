@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     ast::{ApplicationExpr, Ast, Expr},
+    lexer::Lexer,
     symbol::Span,
     typ::{TypeMap, extract_fun_typs, normalize_typ},
 };
@@ -9,10 +10,16 @@ use crate::{
 struct TransformApplicationsVisitor<'a> {
     debug: bool,
     type_map: &'a mut TypeMap,
+    lexer: &'a Lexer,
 }
 
-pub fn transform_applications(ast: &Ast, type_map: &mut TypeMap, debug: bool) {
-    TransformApplicationsVisitor { debug, type_map }.transform_applications(ast);
+pub fn transform_applications(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: bool) {
+    TransformApplicationsVisitor {
+        debug,
+        type_map,
+        lexer,
+    }
+    .transform_applications(ast);
 }
 
 impl<'a> TransformApplicationsVisitor<'a> {
@@ -51,6 +58,7 @@ impl<'a> TransformApplicationsVisitor<'a> {
         };
         if application_expr.binds.len() > (fun_typs.len() - 1) {
             self.print_debug_info(application_expr.binds.len() - (fun_typs.len() - 1));
+            self.print_expr_before(application_expr);
             let mut args = application_expr.binds.clone();
             let args_reminder = args.split_off(fun_typs.len() - 1);
             let span = Span::new(
@@ -70,14 +78,29 @@ impl<'a> TransformApplicationsVisitor<'a> {
 
             application_expr.fun = inner_expr;
             application_expr.binds = args_reminder;
+            self.print_expr_after(application_expr);
             self.transform_application(application_expr);
+        }
+    }
+
+    fn print_expr_before(&self, application_expr: &ApplicationExpr) {
+        if self.debug {
+            println!("> Before transformation:");
+            application_expr.pretty_print(self.lexer);
+        }
+    }
+
+    fn print_expr_after(&self, application_expr: &ApplicationExpr) {
+        if self.debug {
+            println!("> After transformation:");
+            application_expr.pretty_print(self.lexer);
         }
     }
 
     fn print_debug_info(&self, extra_arguments: usize) {
         if self.debug {
             println!(
-                "Found over-application (extra arguments: {extra_arguments}). Transforming application expression."
+                "Found over-application (extra arguments: {extra_arguments}). Transforming application expression:"
             )
         }
     }
