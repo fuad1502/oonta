@@ -93,8 +93,6 @@ pub enum IRValue {
 
 #[derive(Debug, Clone)]
 pub enum IRPri {
-    Null,
-    I8(i8),
     I32(i32),
     I64(i64),
     Str(&'static str),
@@ -530,10 +528,8 @@ impl IRValue {
     pub fn typ(&self) -> IRType {
         match self {
             IRValue::Void => IRType::Void,
-            IRValue::Pri(IRPri::I8(_)) => IRType::I8,
             IRValue::Pri(IRPri::I32(_)) => IRType::I32,
             IRValue::Pri(IRPri::I64(_)) => IRType::I64,
-            IRValue::Pri(IRPri::Null) => IRType::Ptr,
             IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
             IRValue::Reg(_, ir_type) => ir_type.clone(),
             IRValue::Global(_, ir_type) => ir_type.clone(),
@@ -552,8 +548,6 @@ impl IRValue {
         match self {
             IRValue::Reg(name, _) => format!("%{name}"),
             IRValue::Global(name, _) => format!("@{name}"),
-            IRValue::Pri(IRPri::Null) => "null".to_string(),
-            IRValue::Pri(IRPri::I8(val)) => val.to_string(),
             IRValue::Pri(IRPri::I32(val)) => val.to_string(),
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
@@ -618,10 +612,8 @@ impl std::fmt::Display for IRType {
 impl std::fmt::Display for IRPri {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
-            IRPri::I8(val) => write!(fmt, "i8 {val}"),
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
-            IRPri::Null => write!(fmt, "ptr null"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
         }
     }
