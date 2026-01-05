@@ -1,5 +1,7 @@
 # Oonta 🐪
 
+[![CI](https://github.com/fuad1502/oonta/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/oonta/actions/workflows/CI.yml)
+
 *Oonta* is a compiler front-end for the *OCaml* programming language for
 generating *LLVM* intermediate representation (IR) from *OCaml* source code.
 
