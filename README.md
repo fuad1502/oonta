@@ -3,8 +3,8 @@
 [![CI](https://github.com/fuad1502/oonta/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/oonta/actions/workflows/CI.yml)
 
 *Oonta* is a compiler front-end for the [OCaml programming
-language](https://ocaml.org): it generates an [LLVM intermediate representation
-(IR)](https://llvm.org/docs/LangRef.html) from an OCaml source code.
+language](https://ocaml.org): it generates [LLVM intermediate representation
+(IR)](https://llvm.org/docs/LangRef.html) from OCaml source code.
 
 *Oonta* uses the [JLEK](https://github.com/fuad1502/jlek) parser generator and
 [JJIK](https://github.com/fuad1502/jlek) lexer generator to perform the parsing
