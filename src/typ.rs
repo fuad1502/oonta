@@ -568,3 +568,174 @@ fn does_returns_fun(typ: Rc<RefCell<Type>>) -> bool {
         false
     }
 }
+
+#[cfg(test)]
+mod test {
+    use core::{assert_eq, result::Result};
+
+    use crate::{
+        ast::{Ast, Expr},
+        ast_builder::AstBuilder,
+        lexer::Lexer,
+        parser::Parser,
+        typ::{Error, TypeMap, TypeResolver},
+    };
+
+    #[test]
+    fn literal() {
+        assert_type_of_last_bind("let x = 5", "int");
+    }
+
+    #[test]
+    fn fun() {
+        assert_type_of_last_bind("let add a b = a + b", "(int -> int -> int)");
+    }
+
+    #[test]
+    fn fun_with_capture() {
+        assert_type_of_last_bind("let x = 5 let add a b = a + b + x", "(int -> int -> int)");
+    }
+
+    #[test]
+    fn full_application() {
+        assert_type_of_last_bind("let add a b = a + b let x = add 3 3", "int");
+    }
+
+    #[test]
+    fn partial_application() {
+        assert_type_of_last_bind("let add a b = a + b let addthree = add 3", "(int -> int)");
+    }
+
+    #[test]
+    fn anonymous_fun() {
+        assert_type_of_last_bind("let f = fun x -> x", "('a -> 'a)");
+    }
+
+    #[test]
+    fn let_in() {
+        assert_type_of_last_bind("let x = 5 let y = let x = fun x -> x in x 5", "int");
+    }
+
+    #[test]
+    fn rec_fun() {
+        assert_type_of_last_bind("let rec f x = f(x - 1)", "(int -> 'a)");
+    }
+
+    #[test]
+    fn combine_params() {
+        assert_type_of_last_bind(
+            "let f x = fun y -> fun z -> x + y + z",
+            "(int -> int -> int -> int)",
+        );
+    }
+
+    #[test]
+    fn over_application() {
+        assert_type_of_last_bind(
+            "let f x = let x = x + 1 in fun y -> x + y let y = f 3 3",
+            "int",
+        );
+    }
+
+    #[test]
+    fn bool() {
+        assert_type_of_last_bind("let x = 4 >= 4", "bool");
+    }
+
+    #[test]
+    fn conditional() {
+        assert_type_of_last_bind("let x = if 1 > 0 then 3 else 5", "int");
+    }
+
+    #[test]
+    fn unit_type() {
+        assert_type_of_last_bind("let x = ()", "()");
+    }
+
+    #[test]
+    fn unbind_var() {
+        let e = assert_error("let x = y");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::UnboundVariable(_) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
+        }
+    }
+
+    #[test]
+    fn cannot_unify_typ() {
+        let e = assert_error("let x = 1 + (1 > 0)");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::CannotUnifyType(_, _) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
+        }
+    }
+
+    #[test]
+    fn cannot_apply() {
+        let e = assert_error("let add a b = a + b let x = add 1 2 3");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::UnableToApply(_, _) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
+        }
+    }
+
+    #[test]
+    fn cannot_bind_to_unit() {
+        let e = assert_error("let () = 5");
+
+        if let Error::CannotBindToUnit(_, _) = e {
+        } else {
+            panic!("Incorrect error type");
+        }
+    }
+
+    fn assert_type_of_last_bind(src: &str, expect_type: &str) {
+        let mut lexer = Lexer::from_source_str(src);
+        let ast = build_ast(&mut lexer).unwrap();
+        let type_map = resolve_types(&ast, &lexer).unwrap();
+        let type_str = get_last_bind_typ_str(&ast, &type_map);
+        assert_eq!(expect_type, &type_str)
+    }
+
+    fn assert_error(src: &str) -> Error {
+        let mut lexer = Lexer::from_source_str(src);
+        let ast = build_ast(&mut lexer).unwrap();
+        match resolve_types(&ast, &lexer) {
+            Result::Ok(_) => panic!("expect error"),
+            Result::Err(e) => e,
+        }
+    }
+
+    fn build_ast(lexer: &mut Lexer) -> Result<Ast, String> {
+        let mut parser = Parser::new();
+        let cst_root = parser.parse(lexer)?;
+        let mut ast_builder = AstBuilder::new(lexer);
+        Ok(ast_builder.visit(&cst_root))
+    }
+
+    fn resolve_types(ast: &Ast, lexer: &Lexer) -> Result<TypeMap, Error> {
+        let type_resolver = TypeResolver::new(lexer);
+        type_resolver.resolve_types(ast)
+    }
+
+    fn get_last_bind_typ_str(ast: &Ast, type_map: &TypeMap) -> String {
+        let expr = &*ast.binds.last().unwrap().expr.borrow();
+        let typ = type_map.get(expr as *const Expr).unwrap();
+        typ.borrow().to_string()
+    }
+}
