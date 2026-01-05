@@ -1,4 +1,4 @@
-# Oonta
+# Oonta 🐪
 
 *Oonta* is a compiler front-end for the *OCaml* programming language for
 generating *LLVM* intermediate representation (IR) from *OCaml* source code.
@@ -8,6 +8,11 @@ generating *LLVM* intermediate representation (IR) from *OCaml* source code.
 > supported. For example, custom types, pattern matching, and modules are not
 > yet supported. Additionally, the garbage collector runtime is not yet
 > available. See the issues tab for list of work items and progress.
+
+> [!NOTE]
+> This project is part of my ["Compiler Toys"
+> project](https://github.com/fuad1502/compiler_toys), originally meant as a
+> learning exercise on Compilers.
 
 ## Quick Start
 
@@ -28,10 +33,11 @@ oonta --exec main.ml
 ```
 ## Dependencies
 
-*Oonta* have no runtime dependencies other than the standard library. However,
-for convenience, the `oonta` command provides the `--compile / -c` and `--exec
-/ -e` options to compile the generated IR to an object code and executable,
-respectively. Internally, `oonta` will invoke the following commands:
+The `oonta` binary does not have any runtime dependencies other than the
+standard library. However, for convenience, the `oonta` command provides the
+`--compile / -c` and `--exec / -e` options to compile the generated IR to an
+object code and executable, respectively. Internally, `oonta` will invoke the
+following commands:
 
 ```sh
 # with --compile
@@ -175,3 +181,7 @@ cargo test
 > [!NOTE]
 > `oonta` only depends on `jjik`, `jlek`, and Rust's standard library for
 > building.
+
+## Why is it called Oonta?
+
+*Oonta*, is based on the Indonesian word *unta*, which translates to "camel".
