@@ -7,7 +7,7 @@ language](https://ocaml.org): it generates [LLVM intermediate representation
 (IR)](https://llvm.org/docs/LangRef.html) from OCaml source code.
 
 *Oonta* uses the [JLEK](https://github.com/fuad1502/jlek) parser generator and
-[JJIK](https://github.com/fuad1502/jlek) lexer generator to perform the parsing
+[JJIK](https://github.com/fuad1502/jjik) lexer generator to perform the parsing
 and lexing stages.
 
 > [!IMPORTANT]
