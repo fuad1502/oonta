@@ -47,15 +47,19 @@ llc -relocation-model=pic --filetype=obj -o <output> <.ll file>
 # with --exec
 clang -o <output> <.o file>
 ```
-On Ubuntu, install the `llvm` and `clang` package to make those commands
-available.
+On Ubuntu, install the `llvm` package to make those commands available.
 
 ```sh
-sudo apt install llvm clang
+sudo apt install llvm
 ```
 > [!NOTE]
 > I will be working on my own LLVM backend as part of my compiler learning
 > journey! ✨
+
+> [!WARNING]
+> The generated IR uses [opaque
+> pointers](https://llvm.org/docs/OpaquePointers.html). If your LLVM version is
+> older than version 15, the `--compile` / `--exec` options might not work.
 
 ## User Guide
 
