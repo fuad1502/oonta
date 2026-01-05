@@ -6,8 +6,8 @@ generating *LLVM* intermediate representation (IR) from *OCaml* source code.
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
 > supported. For example, custom types, pattern matching, and modules are not
-> yet supported. See the issues tab for list of work items and progress.
-> Additionally, the garbage collector runtime is not yet available.
+> yet supported. Additionally, the garbage collector runtime is not yet
+> available. See the issues tab for list of work items and progress.
 
 ## Quick Start
 
@@ -47,7 +47,7 @@ sudo apt install llvm clang
 ```
 > [!NOTE]
 > I will be working on my own LLVM backend as part of my compiler learning
-> journey.
+> journey! ✨
 
 ## User Guide
 
@@ -163,7 +163,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 2. Clone repository.
 
 ```sh
-git clone https://github.com/fuad1502/compiler_toys.git
+git clone https://github.com/fuad1502/oonta.git
 ```
 3. Build `oonta` crate.
 
