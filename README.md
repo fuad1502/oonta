@@ -2,19 +2,24 @@
 
 [![CI](https://github.com/fuad1502/oonta/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/oonta/actions/workflows/CI.yml)
 
-*Oonta* is a compiler front-end for the *OCaml* programming language for
-generating *LLVM* intermediate representation (IR) from *OCaml* source code.
+*Oonta* is a compiler front-end for the [OCaml programming
+language](https://ocaml.org): it generates an [LLVM intermediate representation
+(IR)](https://llvm.org/docs/LangRef.html) from an OCaml source code.
+
+*Oonta* uses the [JLEK](https://github.com/fuad1502/jlek) parser generator and
+[JJIK](https://github.com/fuad1502/jlek) lexer generator to perform the parsing
+and lexing stages.
 
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
 > supported. For example, custom types, pattern matching, and modules are not
 > yet supported. Additionally, the garbage collector runtime is not yet
-> available. See the issues tab for list of work items and progress.
+> available. See the issues tab for the list of work items.
 
 > [!NOTE]
-> This project is part of my ["Compiler Toys"
-> project](https://github.com/fuad1502/compiler_toys), originally meant as a
-> learning exercise on Compilers.
+> This project is part of the ["Compiler
+> Toys"](https://github.com/fuad1502/compiler_toys) project, originally meant
+> as a learning exercise on Compilers.
 
 ## Quick Start
 
