@@ -1,4 +1,4 @@
-# Oonta 🐪
+![Oonta: OCaml to LLVM IR Compiler](assets/banner.png)
 
 [![CI](https://github.com/fuad1502/oonta/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/oonta/actions/workflows/CI.yml)
 
