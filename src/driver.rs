@@ -201,3 +201,76 @@ fn execute_command(mut cmd: Command) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use core::convert::From;
+    use std::{
+        path::{Path, PathBuf},
+        process::Command,
+    };
+
+    use crate::driver::{CompileOptions, compile};
+
+    #[test]
+    fn ll() {
+        let options = vec![];
+        let out_path = out_path("ll");
+        clear_output_files(&out_path);
+        compile(&src_path(), &out_path, &options).unwrap();
+
+        assert!(std::fs::exists(&out_path).unwrap());
+        assert!(!std::fs::exists(out_path.with_extension("o")).unwrap());
+        assert!(!std::fs::exists(out_path.with_extension("out")).unwrap());
+        clear_output_files(&out_path);
+    }
+
+    #[test]
+    fn obj() {
+        let options = vec![CompileOptions::CreateObjFile];
+        let out_path = out_path("obj");
+        clear_output_files(&out_path);
+        compile(&src_path(), &out_path, &options).unwrap();
+
+        assert!(std::fs::exists(&out_path).unwrap());
+        assert!(std::fs::exists(out_path.with_extension("o")).unwrap());
+        assert!(!std::fs::exists(out_path.with_extension("out")).unwrap());
+        clear_output_files(&out_path);
+    }
+
+    #[test]
+    fn exec() {
+        let options = vec![CompileOptions::CreateExecutable];
+        let out_path = out_path("exec");
+        clear_output_files(&out_path);
+        compile(&src_path(), &out_path, &options).unwrap();
+
+        assert!(std::fs::exists(&out_path).unwrap());
+        assert!(std::fs::exists(out_path.with_extension("o")).unwrap());
+        assert!(std::fs::exists(out_path.with_extension("out")).unwrap());
+
+        let mut cmd = Command::new(out_path.with_extension("out"));
+        let output = cmd.output().unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(stdout, "9\n120\n");
+        clear_output_files(&out_path);
+    }
+
+    fn src_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("ocaml")
+            .join("test.ml")
+    }
+
+    fn out_path(postfix: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("ocaml")
+            .join(format!("test-{postfix}.ll"))
+    }
+
+    fn clear_output_files(out_path: &Path) {
+        let _ = std::fs::remove_file(out_path);
+        let _ = std::fs::remove_file(out_path.with_extension("o"));
+        let _ = std::fs::remove_file(out_path.with_extension("out"));
+    }
+}

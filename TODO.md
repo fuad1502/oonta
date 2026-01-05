@@ -6,7 +6,7 @@
 - [x] Add option to compile to object code / binary using llvm ("-c/--compile")
 - [x] Add debug phases option
 - [x] Pretty print AST
-- [ ] Create test suite for driver and type inference
+- [x] Create test suite for driver and type inference
 - [ ] Create cargo doc & README
 - [ ] Separate jjik / jlek / oonta into separate repos
 - [ ] Comission logo to wife
