@@ -2,6 +2,13 @@
 name = "oonta"
 version = "0.1.0"
 edition = "2024"
+description = "OCaml to LLVM IR compiler front-end"
+authors = ["Fuad Ismail <fuad1502@gmail.com>"]
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/fuad1502/oonta"
+readme = "README.md"
+keywords = ["compiler", "ocaml", "llvm"]
 
 [dependencies]
 
