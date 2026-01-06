@@ -19,6 +19,7 @@ Gte(">=")
 Gt(">")
 LeftParen("\(")
 RightParen("\)")
+Comma(",")
 Number("\d\d*")
 Identifier("\w(\w|_)*")
 
@@ -43,7 +44,12 @@ BinOp |
 LetIn |
 Parenthesize |
 AnonymousFun |
+Tuple |
 If Expr Then Expr Else Expr;
+
+Tuple = LeftParen ExprList RightParen;
+
+ExprList = ExprList Comma Expr | Expr Comma Expr;
 
 AnonymousFun = Fun ParamList Arrow Expr;
 

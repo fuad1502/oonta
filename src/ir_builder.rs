@@ -2,7 +2,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
+        TupleExpr, VarExpr,
     },
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
@@ -77,6 +78,7 @@ impl<'a> IRBuilder<'a> {
             Expr::Literal(literal_expr) => self.visit_literal_expr(literal_expr),
             Expr::Var(var_expr) => self.visit_var_expr(var_expr),
             Expr::Fun(fun_expr) => self.visit_fun_expr(fun_expr, expr_ptr),
+            Expr::Tuple(tuple_expr) => self.visit_tuple_expr(tuple_expr),
             Expr::Application(application_expr) => {
                 self.visit_application_expr(application_expr, expr_ptr)
             }
@@ -144,7 +146,7 @@ impl<'a> IRBuilder<'a> {
 
         // 4. Create closure
         self.pop_ctx();
-        let closure_ptr = self.malloc(4 * (1 + fun_expr.captures.len()));
+        let closure_ptr = self.malloc(8 * (1 + fun_expr.captures.len()));
 
         // > store anon function ptr
         let ptr = self
@@ -239,7 +241,7 @@ impl<'a> IRBuilder<'a> {
         env_typs.extend(arg_typs.clone());
         let dispath_closure_typ =
             IRType::Struct(vec![IRType::Ptr, IRType::Struct(env_typs.clone())]);
-        let dispath_closure_ptr = self.malloc(4 * (1 + env_typs.len()));
+        let dispath_closure_ptr = self.malloc(8 * (1 + env_typs.len()));
 
         // > store anon function ptr
         let ptr = self.curr_fun().getelemptr(
@@ -307,6 +309,24 @@ impl<'a> IRBuilder<'a> {
         dispath_closure_ptr
     }
 
+    fn visit_tuple_expr(&mut self, tuple_expr: &TupleExpr) -> IRValue {
+        let tuple_ptr = self.malloc(8 * tuple_expr.elements.len());
+        let values: Vec<IRValue> = tuple_expr
+            .elements
+            .iter()
+            .map(|expr| self.visit_expr(&expr.borrow()))
+            .collect();
+        let typs: Vec<IRType> = values.iter().map(|val| val.typ()).collect();
+        let tuple_typ = IRType::Struct(typs);
+        values.into_iter().enumerate().for_each(|(i, val)| {
+            let ptr =
+                self.curr_fun()
+                    .getelemptr(tuple_typ.clone(), tuple_ptr.clone(), &[0, i as i32]);
+            self.curr_fun().store(val, ptr);
+        });
+        tuple_ptr
+    }
+
     fn visit_cond_expr(&mut self, cond_expr: &CondExpr, expr_ptr: *const Expr) -> IRValue {
         let cond_val = self.visit_expr(&cond_expr.cond.borrow());
         let typ = self.get_ir_typ(expr_ptr);
@@ -358,7 +378,7 @@ impl<'a> IRBuilder<'a> {
 
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {
         match literal_expr {
-            LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I32(*value)),
+            LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I64(*value)),
             LiteralExpr::Unit(_) => IRValue::Void,
         }
     }

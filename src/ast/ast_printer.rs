@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
+        TupleExpr, VarExpr,
     },
     lexer::Lexer,
     terminal_colors::{BLUE, END, YELLOW},
@@ -38,6 +39,7 @@ impl<'a> AstPrinter<'a> {
             Expr::Literal(literal_expr) => self.pretty_print_literal_expr(literal_expr),
             Expr::Var(var_expr) => self.pretty_print_var_expr(var_expr),
             Expr::Fun(fun_expr) => self.pretty_print_fun_expr(fun_expr),
+            Expr::Tuple(tuple_expr) => self.pretty_print_tuple_expr(tuple_expr),
             Expr::Application(application_expr) => {
                 self.pretty_print_application_expr(application_expr)
             }
@@ -71,6 +73,23 @@ impl<'a> AstPrinter<'a> {
         println!("{}└─▸ body:", self.indent);
         self.indent += "    ";
         self.pretty_print_expr(&fun_expr.body.borrow());
+    }
+
+    pub fn pretty_print_tuple_expr(&mut self, tuple_expr: &TupleExpr) {
+        println!("{}{BLUE}TupleExpr{END}", self.indent);
+        println!("{}└─▸ elements:", self.indent);
+        let orig_indent = self.indent.clone();
+        for (i, element) in tuple_expr.elements.iter().enumerate() {
+            self.indent = orig_indent.clone();
+            if i < tuple_expr.elements.len() - 1 {
+                println!("{}    ├─▸ ({i})", self.indent);
+                self.indent += "    │   ";
+            } else {
+                println!("{}    └─▸ ({i})", self.indent);
+                self.indent += "        ";
+            }
+            self.pretty_print_expr(&element.borrow());
+        }
     }
 
     pub fn pretty_print_application_expr(&mut self, application_expr: &ApplicationExpr) {

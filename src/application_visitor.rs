@@ -33,6 +33,12 @@ impl<'a> TransformApplicationsVisitor<'a> {
         match &mut *expr.borrow_mut() {
             Expr::Application(application_expr) => self.transform_application(application_expr),
             Expr::Fun(fun_expr) => self.transform_expr(&fun_expr.body),
+            Expr::Tuple(tuple_expr) => {
+                tuple_expr
+                    .elements
+                    .iter()
+                    .for_each(|e| self.transform_expr(e));
+            }
             Expr::LetIn(let_in_expr) => {
                 self.transform_expr(&let_in_expr.bind.1);
                 self.transform_expr(&let_in_expr.expr);

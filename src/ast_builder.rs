@@ -1,7 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    ast::{ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator},
+    ast::{
+        ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator, TupleExpr,
+    },
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -98,14 +100,15 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            14..=21 | 38..=41 => self.visit_expr(&non_terminal.rule.components[0]),
-            22 => self.visit_if_then_else_expr(&non_terminal.rule.components),
-            23 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            24 => self.visit_expr(&non_terminal.rule.components[1]),
-            25 => self.visit_let_in_expr(&non_terminal.rule.components),
-            26..=34 => self.visit_binop_expr(&non_terminal.rule.components),
-            35 => self.visit_append_application(&non_terminal.rule.components),
-            36 | 37 => self.visit_application(&non_terminal.rule.components),
+            14..=22 | 42..=45 => self.visit_expr(&non_terminal.rule.components[0]),
+            23 => self.visit_if_then_else_expr(&non_terminal.rule.components),
+            24 => self.visit_tuple_expr(&non_terminal.rule.components),
+            27 => self.visit_anonymous_fun(&non_terminal.rule.components),
+            28 => self.visit_expr(&non_terminal.rule.components[1]),
+            29 => self.visit_let_in_expr(&non_terminal.rule.components),
+            30..=38 => self.visit_binop_expr(&non_terminal.rule.components),
+            39 => self.visit_append_application(&non_terminal.rule.components),
+            40 | 41 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -125,6 +128,15 @@ impl<'a> AstBuilder<'a> {
             span,
         });
         Rc::new(RefCell::new(cond_expr))
+    }
+
+    fn visit_tuple_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
+        let elements = self.visit_expr_list(&components[1]);
+        let start_pos = extract_span(&components[0]).start_pos();
+        let end_pos = extract_span(&components[2]).end_pos();
+        let span = Span::new(start_pos, end_pos);
+        let tuple_expr = TupleExpr { elements, span };
+        Rc::new(RefCell::new(Expr::Tuple(tuple_expr)))
     }
 
     fn visit_anonymous_fun(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
@@ -215,6 +227,25 @@ impl<'a> AstBuilder<'a> {
                 param_list
             }
             12 => vec![self.visit_param(&rule.components[0])],
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_expr_list(&mut self, symbol: &Symbol) -> Vec<Rc<RefCell<Expr>>> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            25 => {
+                let mut expr_list = self.visit_expr_list(&rule.components[0]);
+                let expr = self.visit_expr(&rule.components[2]);
+                expr_list.push(expr);
+                expr_list
+            }
+            26 => {
+                vec![
+                    self.visit_expr(&rule.components[0]),
+                    self.visit_expr(&rule.components[2]),
+                ]
+            }
             _ => unreachable!(),
         }
     }

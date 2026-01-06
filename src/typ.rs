@@ -3,7 +3,7 @@ use core::fmt::Formatter;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use crate::ast::CondExpr;
+use crate::ast::{CondExpr, TupleExpr};
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
@@ -14,6 +14,7 @@ use crate::{
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Type {
     Fun(Vec<Rc<RefCell<Type>>>),
+    Tuple(Vec<Rc<RefCell<Type>>>),
     Primitive(Primitive),
     Variable(Variable),
 }
@@ -114,6 +115,7 @@ impl<'a> TypeResolver<'a> {
                 typ
             }
             Expr::Conditional(cond_expr) => self.infer_cond_expr(cond_expr),
+            Expr::Tuple(tuple_expr) => self.infer_tuple_expr(tuple_expr),
         };
         let typ = typ_res.map_err(|e| match e {
             Error::CannotInferExprType(_, _) => e,
@@ -175,6 +177,15 @@ impl<'a> TypeResolver<'a> {
         let ret_typ = self.new_var();
         let inferred_typ = self.infer_type(&application_expr.fun.borrow())?;
         self.unify_application_typ(arg_typs, ret_typ, inferred_typ)
+    }
+
+    fn infer_tuple_expr(&mut self, tuple_expr: &TupleExpr) -> TypeResult {
+        let typs = tuple_expr
+            .elements
+            .iter()
+            .map(|e| self.infer_type(&e.borrow()))
+            .collect::<Result<Vec<Rc<RefCell<Type>>>, Error>>()?;
+        Ok(Rc::new(RefCell::new(Type::Tuple(typs))))
     }
 
     fn unify_application_typ(
@@ -307,6 +318,10 @@ impl<'a> TypeResolver<'a> {
                 self.var_id_in_local_ctx += 1;
                 Rc::new(RefCell::new(inst_typ))
             }
+            Type::Tuple(typs) => {
+                let typs = typs.into_iter().map(|t| self.instantiate_typ(t)).collect();
+                Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
         }
     }
 
@@ -424,7 +439,7 @@ fn rename(typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
 
 fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
     match typ.borrow().clone() {
-        Type::Fun(typs) => {
+        Type::Fun(typs) | Type::Tuple(typs) => {
             let mut unbounds = vec![];
             for typ in typs {
                 unbounds.append(&mut gather_unbounds(typ));
@@ -447,6 +462,15 @@ pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
                 .map(Rc::new)
                 .collect();
             Type::Fun(typs)
+        }
+        Type::Tuple(typs) => {
+            let typs = typs
+                .into_iter()
+                .map(normalize_typ)
+                .map(RefCell::new)
+                .map(Rc::new)
+                .collect();
+            Type::Tuple(typs)
         }
         Type::Primitive(_) => typ,
         Type::Variable(Variable::Link(typ)) => normalize_typ(typ),
@@ -472,6 +496,17 @@ impl std::fmt::Display for Type {
                         write!(fmt, "{}", typ.borrow())?;
                     } else {
                         write!(fmt, "{} -> ", typ.borrow())?;
+                    }
+                }
+                write!(fmt, ")")
+            }
+            Type::Tuple(typs) => {
+                write!(fmt, "(")?;
+                for (i, typ) in typs.iter().enumerate() {
+                    if i == typs.len() - 1 {
+                        write!(fmt, "{}", typ.borrow())?;
+                    } else {
+                        write!(fmt, "{} * ", typ.borrow())?;
                     }
                 }
                 write!(fmt, ")")

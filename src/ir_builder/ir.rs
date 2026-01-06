@@ -580,8 +580,8 @@ impl IRType {
 impl From<Type> for IRType {
     fn from(typ: Type) -> Self {
         match typ {
-            Type::Fun(_) => IRType::Ptr,
-            Type::Primitive(Primitive::Integer) => IRType::I32,
+            Type::Fun(_) | Type::Tuple(_) => IRType::Ptr,
+            Type::Primitive(Primitive::Integer) => IRType::I64,
             Type::Primitive(Primitive::Bool) => IRType::I1,
             Type::Primitive(Primitive::Unit) => IRType::Void,
             Type::Variable(Variable::Unbound(_)) => todo!(),
