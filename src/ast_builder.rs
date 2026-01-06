@@ -2,7 +2,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator, TupleExpr,
+        ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator, Pattern,
+        PatternMatchExpr, TupleExpr,
     },
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
@@ -100,15 +101,16 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            14..=22 | 42..=45 => self.visit_expr(&non_terminal.rule.components[0]),
-            23 => self.visit_if_then_else_expr(&non_terminal.rule.components),
-            24 => self.visit_tuple_expr(&non_terminal.rule.components),
-            27 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            28 => self.visit_expr(&non_terminal.rule.components[1]),
-            29 => self.visit_let_in_expr(&non_terminal.rule.components),
-            30..=38 => self.visit_binop_expr(&non_terminal.rule.components),
-            39 => self.visit_append_application(&non_terminal.rule.components),
-            40 | 41 => self.visit_application(&non_terminal.rule.components),
+            14..=23 | 53..=56 => self.visit_expr(&non_terminal.rule.components[0]),
+            24 => self.visit_if_then_else_expr(&non_terminal.rule.components),
+            25 => self.visit_tuple_expr(&non_terminal.rule.components),
+            28 => self.visit_anonymous_fun(&non_terminal.rule.components),
+            29 => self.visit_expr(&non_terminal.rule.components[1]),
+            30 => self.visit_let_in_expr(&non_terminal.rule.components),
+            31 => self.visit_pattern_match_expr(&non_terminal.rule.components),
+            41..=49 => self.visit_binop_expr(&non_terminal.rule.components),
+            50 => self.visit_append_application(&non_terminal.rule.components),
+            51 | 52 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -128,6 +130,21 @@ impl<'a> AstBuilder<'a> {
             span,
         });
         Rc::new(RefCell::new(cond_expr))
+    }
+
+    fn visit_pattern_match_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
+        let matched = self.visit_expr(&components[1]);
+        let branches = self.visit_branches(&components[3]);
+        let span = Span::new(
+            extract_span(&components[0]).start_pos(),
+            branches.last().unwrap().1.borrow().span().end_pos(),
+        );
+        let pattern_match_expr = PatternMatchExpr {
+            matched,
+            branches,
+            span,
+        };
+        Rc::new(RefCell::new(Expr::PatternMatch(pattern_match_expr)))
     }
 
     fn visit_tuple_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
@@ -206,8 +223,19 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         match terminal.class() {
-            TerminalClass::Number => self.new_integer_expr(terminal),
             TerminalClass::Identifier => self.new_var_expr(terminal),
+            TerminalClass::Number | TerminalClass::Unit => {
+                let literal_expr = self.visit_literal_expr(terminal);
+                let expr = Expr::Literal(literal_expr);
+                Rc::new(RefCell::new(expr))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_literal_expr(&mut self, terminal: &Terminal) -> LiteralExpr {
+        match terminal.class() {
+            TerminalClass::Number => self.new_integer_expr(terminal),
             TerminalClass::Unit => self.new_unit_expr(terminal),
             _ => unreachable!(),
         }
@@ -234,17 +262,86 @@ impl<'a> AstBuilder<'a> {
     fn visit_expr_list(&mut self, symbol: &Symbol) -> Vec<Rc<RefCell<Expr>>> {
         let rule = extract_rule(symbol);
         match rule.number {
-            25 => {
+            26 => {
                 let mut expr_list = self.visit_expr_list(&rule.components[0]);
                 let expr = self.visit_expr(&rule.components[2]);
                 expr_list.push(expr);
                 expr_list
             }
-            26 => {
+            27 => {
                 vec![
                     self.visit_expr(&rule.components[0]),
                     self.visit_expr(&rule.components[2]),
                 ]
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_branches(&mut self, symbol: &Symbol) -> Vec<(Pattern, Rc<RefCell<Expr>>)> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            32 => {
+                let mut branches = self.visit_branches(&rule.components[0]);
+                let branch = self.visit_branch(&rule.components[2]);
+                branches.push(branch);
+                branches
+            }
+            33 => vec![self.visit_branch(&rule.components[0])],
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_branch(&mut self, symbol: &Symbol) -> (Pattern, Rc<RefCell<Expr>>) {
+        let components = extract_components(symbol);
+        let pattern = self.visit_pattern(&components[0]);
+        let expr = self.visit_expr(&components[2]);
+        (pattern, expr)
+    }
+
+    fn visit_pattern(&mut self, symbol: &Symbol) -> Pattern {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            35 => {
+                let patterns = self.visit_patterns(&rule.components[1]);
+                Pattern::Tuple(patterns)
+            }
+            36 => self.visit_singular_pattern(&rule.components[0]),
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_patterns(&mut self, symbol: &Symbol) -> Vec<Pattern> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            37 => {
+                let mut patterns = self.visit_patterns(&rule.components[0]);
+                let pattern = self.visit_pattern(&rule.components[2]);
+                patterns.push(pattern);
+                patterns
+            }
+            38 => vec![
+                self.visit_pattern(&rule.components[0]),
+                self.visit_pattern(&rule.components[2]),
+            ],
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_singular_pattern(&mut self, symbol: &Symbol) -> Pattern {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            39 => {
+                let span = extract_span(&rule.components[0]);
+                match self.lexer.str_from_span(span) {
+                    "_" => Pattern::None,
+                    _ => Pattern::Identifier(span.clone()),
+                }
+            }
+            40 => {
+                let literal = &rule.components[0];
+                let terminal = &extract_components(literal)[0];
+                Pattern::Literal(self.visit_literal_expr(extract_terminal(terminal)))
             }
             _ => unreachable!(),
         }
@@ -293,17 +390,16 @@ impl<'a> AstBuilder<'a> {
         Rc::new(RefCell::new(Expr::Application(app_expr)))
     }
 
-    fn new_unit_expr(&self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
+    fn new_unit_expr(&self, terminal: &Terminal) -> LiteralExpr {
         let span = terminal.span().clone();
-        let literal_expr = LiteralExpr::Unit(span);
-        Rc::new(RefCell::new(Expr::Literal(literal_expr)))
+        LiteralExpr::Unit(span)
     }
 
-    fn new_integer_expr(&self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
+    fn new_integer_expr(&self, terminal: &Terminal) -> LiteralExpr {
         let lexeme = self.lexer.get_lexeme(terminal);
         let span = terminal.span().clone();
         let value = lexeme.parse().unwrap();
-        Rc::new(RefCell::new(Expr::integer(value, span)))
+        LiteralExpr::Integer(value, span)
     }
 
     fn new_var_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
@@ -338,18 +434,18 @@ impl<'a> AstBuilder<'a> {
 }
 
 fn extract_span(symbol: &Symbol) -> &Span {
-    if let Symbol::Terminal(t) = symbol {
-        t.span()
-    } else {
-        panic!("extract_span should only be used with Terminal")
-    }
+    extract_terminal(symbol).span()
 }
 
 fn extract_terminal_class(symbol: &Symbol) -> TerminalClass {
+    extract_terminal(symbol).class()
+}
+
+fn extract_terminal(symbol: &Symbol) -> &Terminal {
     if let Symbol::Terminal(t) = symbol {
-        t.class()
+        t
     } else {
-        panic!("extract_terminal_class should only be used with Terminal")
+        panic!("extract_terminal should only be used with Terminal")
     }
 }
 

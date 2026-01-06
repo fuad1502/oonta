@@ -85,6 +85,7 @@ impl<'a> IRBuilder<'a> {
             Expr::LetIn(let_in_expr) => self.visit_let_in_expr(let_in_expr),
             Expr::BinOp(bin_op_expr) => self.visit_bin_op_expr(bin_op_expr, expr_ptr),
             Expr::Conditional(cond_expr) => self.visit_cond_expr(cond_expr, expr_ptr),
+            Expr::PatternMatch(pattern_match_expr) => todo!(),
         }
     }
 

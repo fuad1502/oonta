@@ -52,6 +52,13 @@ impl<'a> TransformApplicationsVisitor<'a> {
                 self.transform_expr(&cond_expr.yes);
                 self.transform_expr(&cond_expr.no);
             }
+            Expr::PatternMatch(pattern_match_expr) => {
+                self.transform_expr(&pattern_match_expr.matched);
+                pattern_match_expr
+                    .branches
+                    .iter()
+                    .for_each(|(_, e)| self.transform_expr(e));
+            }
             Expr::Literal(_) | Expr::Var(_) => (),
         }
     }

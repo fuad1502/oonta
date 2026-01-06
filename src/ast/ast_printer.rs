@@ -46,6 +46,7 @@ impl<'a> AstPrinter<'a> {
             Expr::LetIn(let_in_expr) => self.pretty_print_let_in_expr(let_in_expr),
             Expr::BinOp(bin_op_expr) => self.pretty_print_bin_op_expr(bin_op_expr),
             Expr::Conditional(cond_expr) => self.pretty_print_cond_expr(cond_expr),
+            Expr::PatternMatch(pattern_match_expr) => todo!(),
         }
     }
 

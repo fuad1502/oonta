@@ -21,6 +21,7 @@ pub enum Expr {
     LetIn(LetInExpr),
     BinOp(BinOpExpr),
     Conditional(CondExpr),
+    PatternMatch(PatternMatchExpr),
     Tuple(TupleExpr),
 }
 
@@ -67,6 +68,20 @@ pub struct CondExpr {
     pub span: Span,
 }
 
+pub struct PatternMatchExpr {
+    pub matched: Rc<RefCell<Expr>>,
+    pub branches: Vec<(Pattern, Rc<RefCell<Expr>>)>,
+    pub span: Span,
+}
+
+pub enum Pattern {
+    Tuple(Vec<Pattern>),
+    Identifier(Span),
+    Literal(LiteralExpr),
+    None,
+    // Variant Constructor
+}
+
 pub struct TupleExpr {
     pub elements: Vec<Rc<RefCell<Expr>>>,
     pub span: Span,
@@ -109,11 +124,8 @@ impl Expr {
             Expr::BinOp(BinOpExpr { span, .. }) => span,
             Expr::Conditional(CondExpr { span, .. }) => span,
             Expr::Tuple(TupleExpr { span, .. }) => span,
+            Expr::PatternMatch(PatternMatchExpr { span, .. }) => span,
         }
-    }
-
-    pub fn integer(value: i64, span: Span) -> Self {
-        Self::Literal(LiteralExpr::Integer(value, span.clone()))
     }
 
     pub fn var(span: Span) -> Self {

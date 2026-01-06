@@ -116,6 +116,7 @@ impl<'a> TypeResolver<'a> {
             }
             Expr::Conditional(cond_expr) => self.infer_cond_expr(cond_expr),
             Expr::Tuple(tuple_expr) => self.infer_tuple_expr(tuple_expr),
+            Expr::PatternMatch(pattern_match_expr) => todo!(),
         };
         let typ = typ_res.map_err(|e| match e {
             Error::CannotInferExprType(_, _) => e,
