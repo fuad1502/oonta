@@ -74,6 +74,7 @@ pub enum InstrClass {
     Lt(IRType, IRValue, IRValue),
     Gte(IRType, IRValue, IRValue),
     Gt(IRType, IRValue, IRValue),
+    And(IRType, IRValue, IRValue),
     Store(IRValue, IRValue),
     Call(IRValue, IRType, Vec<IRValue>),
     Alloca(IRType),
@@ -93,6 +94,7 @@ pub enum IRValue {
 
 #[derive(Debug, Clone)]
 pub enum IRPri {
+    I1(bool),
     I32(i32),
     I64(i64),
     Str(&'static str),
@@ -200,7 +202,7 @@ impl Function {
             let mut ir_typs = typs
                 .into_iter()
                 .map(normalize_typ)
-                .map(IRType::from)
+                .map(|t| IRType::from(&t))
                 .collect::<Vec<IRType>>();
             let ret_typ = ir_typs.pop().unwrap();
             let params = ir_typs
@@ -214,11 +216,20 @@ impl Function {
         }
     }
 
-    pub fn add_bb(&mut self, label: &str) -> String {
+    pub fn add_new_bb(&mut self, label: &str) -> String {
         let bb_label = self.new_name(label);
         let bb = BasicBlock::new(bb_label.clone());
         self.bbs.push(bb);
         bb_label
+    }
+
+    pub fn create_bb(&mut self, label: &str) -> BasicBlock {
+        let bb_label = self.new_name(label);
+        BasicBlock::new(bb_label.clone())
+    }
+
+    pub fn add_bb(&mut self, bb: BasicBlock) {
+        self.bbs.push(bb);
     }
 
     pub fn set_bb(&mut self, label: String) {
@@ -363,6 +374,17 @@ impl Function {
         instr.value()
     }
 
+    pub fn and(&mut self, lhs: IRValue, rhs: IRValue) -> IRValue {
+        let res_name = self.new_name("");
+        let typ = lhs.typ();
+        let instr = Instr {
+            class: InstrClass::And(typ.clone(), lhs, rhs),
+            res: IRValue::Reg(res_name, typ.clone()),
+        };
+        self.push_instr(instr.clone());
+        instr.value()
+    }
+
     fn push_instr(&mut self, instr: Instr) {
         self.bbs
             .iter_mut()
@@ -443,6 +465,10 @@ impl BasicBlock {
     fn push_instr(&mut self, instr: Instr) {
         self.instrs.push(instr);
     }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
 }
 
 impl std::fmt::Display for BasicBlock {
@@ -501,6 +527,9 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Gt(irtype, lhs, rhs) => {
                 write!(fmt, "icmp sgt {irtype} {}, {}", lhs.name(), rhs.name())
             }
+            InstrClass::And(irtype, lhs, rhs) => {
+                write!(fmt, "and {irtype} {}, {}", lhs.name(), rhs.name())
+            }
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
             InstrClass::Call(fun_ptr, ret_typ, args) => {
                 write!(fmt, "call {ret_typ} {}(", fun_ptr.name())?;
@@ -528,6 +557,7 @@ impl IRValue {
     pub fn typ(&self) -> IRType {
         match self {
             IRValue::Void => IRType::Void,
+            IRValue::Pri(IRPri::I1(_)) => IRType::I1,
             IRValue::Pri(IRPri::I32(_)) => IRType::I32,
             IRValue::Pri(IRPri::I64(_)) => IRType::I64,
             IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
@@ -548,6 +578,8 @@ impl IRValue {
         match self {
             IRValue::Reg(name, _) => format!("%{name}"),
             IRValue::Global(name, _) => format!("@{name}"),
+            IRValue::Pri(IRPri::I1(true)) => "1".to_string(),
+            IRValue::Pri(IRPri::I1(false)) => "0".to_string(),
             IRValue::Pri(IRPri::I32(val)) => val.to_string(),
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
@@ -577,8 +609,8 @@ impl IRType {
     }
 }
 
-impl From<Type> for IRType {
-    fn from(typ: Type) -> Self {
+impl From<&Type> for IRType {
+    fn from(typ: &Type) -> Self {
         match typ {
             Type::Fun(_) | Type::Tuple(_) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
@@ -612,6 +644,7 @@ impl std::fmt::Display for IRType {
 impl std::fmt::Display for IRPri {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
+            IRPri::I1(val) => write!(fmt, "i1 {val}"),
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),

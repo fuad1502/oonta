@@ -167,6 +167,26 @@ impl ApplicationExpr {
     }
 }
 
+impl Pattern {
+    pub fn has_literal(&self) -> bool {
+        match self {
+            Pattern::Tuple(elements) => elements.iter().any(|e| e.has_literal()),
+            Pattern::Identifier(_) => false,
+            Pattern::Literal(_) => true,
+            Pattern::None => false,
+        }
+    }
+
+    pub fn has_identifier(&self) -> bool {
+        match self {
+            Pattern::Tuple(elements) => elements.iter().any(|e| e.has_identifier()),
+            Pattern::Identifier(_) => true,
+            Pattern::Literal(_) => false,
+            Pattern::None => false,
+        }
+    }
+}
+
 impl std::fmt::Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

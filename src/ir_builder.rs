@@ -1,13 +1,14 @@
+use core::convert::From;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
-        TupleExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, Operator,
+        Pattern, PatternMatchExpr, TupleExpr, VarExpr,
     },
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
-    typ::{Type, TypeMap, extract_fun_typs, normalize_typ},
+    typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs, normalize_typ},
 };
 
 pub mod ir;
@@ -85,7 +86,9 @@ impl<'a> IRBuilder<'a> {
             Expr::LetIn(let_in_expr) => self.visit_let_in_expr(let_in_expr),
             Expr::BinOp(bin_op_expr) => self.visit_bin_op_expr(bin_op_expr, expr_ptr),
             Expr::Conditional(cond_expr) => self.visit_cond_expr(cond_expr, expr_ptr),
-            Expr::PatternMatch(pattern_match_expr) => todo!(),
+            Expr::PatternMatch(pattern_match_expr) => {
+                self.visit_patt_mat_expr(pattern_match_expr, expr_ptr)
+            }
         }
     }
 
@@ -301,7 +304,7 @@ impl<'a> IRBuilder<'a> {
 
         // > call fun with args
         let fun = self.curr_fun().load(IRType::Ptr, closure);
-        let res_typ = IRType::from(dispatch_ret_typ);
+        let res_typ = IRType::from(&dispatch_ret_typ);
         let res = self.curr_fun().call(fun, res_typ, args);
         self.curr_fun().ret(res);
 
@@ -332,9 +335,9 @@ impl<'a> IRBuilder<'a> {
         let cond_val = self.visit_expr(&cond_expr.cond.borrow());
         let typ = self.get_ir_typ(expr_ptr);
         let res_ptr = self.curr_fun().alloca(typ.clone());
-        let then_label = self.curr_fun().add_bb("then");
-        let else_label = self.curr_fun().add_bb("else");
-        let follow_label = self.curr_fun().add_bb("follow");
+        let then_label = self.curr_fun().add_new_bb("then");
+        let else_label = self.curr_fun().add_new_bb("else");
+        let follow_label = self.curr_fun().add_new_bb("follow");
         self.curr_fun()
             .cond_brk(cond_val, then_label.clone(), else_label.clone());
         self.curr_fun().set_bb(then_label);
@@ -347,6 +350,72 @@ impl<'a> IRBuilder<'a> {
         self.curr_fun().brk(follow_label.clone());
         self.curr_fun().set_bb(follow_label);
         self.curr_fun().load(typ, res_ptr)
+    }
+
+    fn visit_patt_mat_expr(
+        &mut self,
+        patt_mat_expr: &PatternMatchExpr,
+        expr_ptr: *const Expr,
+    ) -> IRValue {
+        // TODO: Handle case where none of the branch are hit
+
+        // 1. Prepare return location
+        let typ = self.get_ir_typ(expr_ptr);
+        let res_ptr = self.curr_fun().alloca(typ.clone());
+
+        // 2. Visit matched expression
+        let mat_val = self.visit_expr(&patt_mat_expr.matched.borrow());
+        let mat_expr_ptr = &*patt_mat_expr.matched.borrow() as *const Expr;
+        let mat_typ = self.get_typ(mat_expr_ptr);
+
+        // 3. Prepare exit block
+        let exit_bb = self.curr_fun().create_bb("exit");
+        let exit_label = exit_bb.label().to_string();
+
+        // 4. Visit branches
+        for (patt, expr) in &patt_mat_expr.branches {
+            let conds = self.gather_conds(patt, mat_typ.clone(), mat_val.clone());
+            if !conds.is_empty() {
+                // > Create breakage
+                let cond = self.conjunction(conds);
+                let then_label = self.curr_fun().add_new_bb("then");
+                let follow_label = self.curr_fun().add_new_bb("follow");
+                self.curr_fun()
+                    .cond_brk(cond, then_label.clone(), follow_label.clone());
+                // > Visit branch
+                self.curr_fun().set_bb(then_label);
+                let binds = self.gather_binds(patt, mat_typ.clone(), mat_val.clone());
+                self.visit_branch_expr(binds, &expr.borrow(), res_ptr.clone(), exit_label.clone());
+                self.curr_fun().set_bb(follow_label);
+            } else {
+                // > Visit branch
+                let binds = self.gather_binds(patt, mat_typ.clone(), mat_val.clone());
+                self.visit_branch_expr(binds, &expr.borrow(), res_ptr.clone(), exit_label.clone());
+            }
+        }
+
+        // 5. Load result
+        self.curr_fun().add_bb(exit_bb);
+        self.curr_fun().set_bb(exit_label);
+        self.curr_fun().load(typ, res_ptr)
+    }
+
+    fn visit_branch_expr(
+        &mut self,
+        bindings: Vec<(String, IRValue)>,
+        expr: &Expr,
+        store_ptr: IRValue,
+        exit_label: String,
+    ) {
+        let fun_name = self.curr_fun().name().to_string();
+        self.push_ctx(fun_name);
+        bindings
+            .into_iter()
+            .for_each(|(name, val)| self.insert_name_to_ctx(name, val));
+        let val = self.visit_expr(expr);
+        self.curr_fun().store(val, store_ptr.clone());
+        self.curr_fun().brk(exit_label);
+        self.pop_ctx();
     }
 
     fn visit_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> IRValue {
@@ -381,6 +450,98 @@ impl<'a> IRBuilder<'a> {
         match literal_expr {
             LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I64(*value)),
             LiteralExpr::Unit(_) => IRValue::Void,
+        }
+    }
+
+    fn conjunction(&mut self, mut conditions: Vec<IRValue>) -> IRValue {
+        let mut value = match (conditions.pop(), conditions.pop()) {
+            (Some(value), None) => value,
+            (Some(val_b), Some(val_a)) => self.curr_fun().and(val_a, val_b),
+            (None, _) => IRValue::Pri(IRPri::I1(true)),
+        };
+        for condition in conditions {
+            value = self.curr_fun().and(value, condition);
+        }
+        value
+    }
+
+    fn gather_conds(&mut self, pattern: &Pattern, typ: Type, value: IRValue) -> Vec<IRValue> {
+        // TODO: Refactor
+        match pattern {
+            Pattern::Tuple(elements) => {
+                let mut conditions = vec![];
+                let element_typs: Vec<Type> = extract_tuple_typs(typ)
+                    .unwrap()
+                    .into_iter()
+                    .map(normalize_typ)
+                    .collect();
+                let element_ir_typs = element_typs.iter().map(IRType::from).collect();
+                let pattern_type = IRType::Struct(element_ir_typs);
+                for (i, (element, element_typ)) in elements.iter().zip(element_typs).enumerate() {
+                    if !element.has_literal() {
+                        continue;
+                    }
+                    let ptr = self.curr_fun().getelemptr(
+                        pattern_type.clone(),
+                        value.clone(),
+                        &[0, i as i32],
+                    );
+                    let element_type = IRType::from(&element_typ);
+                    let element_value = self.curr_fun().load(element_type, ptr);
+                    let mut new_conditions = self.gather_conds(element, element_typ, element_value);
+                    conditions.append(&mut new_conditions);
+                }
+                conditions
+            }
+            Pattern::Literal(literal_expr) => {
+                let literal_value = self.visit_literal_expr(literal_expr);
+                let conditional_value =
+                    self.curr_fun()
+                        .binop(IRType::I1, literal_value, value, Operator::Eq);
+                vec![conditional_value]
+            }
+            Pattern::Identifier(_) | Pattern::None => vec![],
+        }
+    }
+
+    fn gather_binds(
+        &mut self,
+        pattern: &Pattern,
+        typ: Type,
+        value: IRValue,
+    ) -> Vec<(String, IRValue)> {
+        // TODO: Refactor
+        match pattern {
+            Pattern::Tuple(elements) => {
+                let mut bindings = vec![];
+                let element_typs: Vec<Type> = extract_tuple_typs(typ)
+                    .unwrap()
+                    .into_iter()
+                    .map(normalize_typ)
+                    .collect();
+                let element_ir_typs = element_typs.iter().map(IRType::from).collect();
+                let pattern_type = IRType::Struct(element_ir_typs);
+                for (i, (element, element_typ)) in elements.iter().zip(element_typs).enumerate() {
+                    if !element.has_identifier() {
+                        continue;
+                    }
+                    let ptr = self.curr_fun().getelemptr(
+                        pattern_type.clone(),
+                        value.clone(),
+                        &[0, i as i32],
+                    );
+                    let element_type = IRType::from(&element_typ);
+                    let element_value = self.curr_fun().load(element_type, ptr);
+                    let mut new_bindings = self.gather_binds(element, element_typ, element_value);
+                    bindings.append(&mut new_bindings);
+                }
+                bindings
+            }
+            Pattern::Identifier(span) => {
+                let name = self.lexer.str_from_span(span);
+                vec![(name.to_string(), value)]
+            }
+            Pattern::Literal(_) | Pattern::None => vec![],
         }
     }
 
@@ -434,7 +595,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn get_ir_typ(&self, expr_ptr: *const Expr) -> IRType {
-        IRType::from(self.get_typ(expr_ptr))
+        IRType::from(&self.get_typ(expr_ptr))
     }
 
     fn get_typ(&self, expr_ptr: *const Expr) -> Type {

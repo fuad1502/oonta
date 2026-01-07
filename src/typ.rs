@@ -528,6 +528,14 @@ pub fn extract_fun_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
     }
 }
 
+pub fn extract_tuple_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
+    if let Type::Tuple(typs) = typ {
+        Some(typs)
+    } else {
+        None
+    }
+}
+
 impl std::fmt::Display for Type {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
