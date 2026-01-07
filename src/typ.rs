@@ -3,7 +3,7 @@ use core::fmt::Formatter;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use crate::ast::{CondExpr, TupleExpr};
+use crate::ast::{CondExpr, Pattern, PatternMatchExpr, TupleExpr};
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
@@ -116,7 +116,9 @@ impl<'a> TypeResolver<'a> {
             }
             Expr::Conditional(cond_expr) => self.infer_cond_expr(cond_expr),
             Expr::Tuple(tuple_expr) => self.infer_tuple_expr(tuple_expr),
-            Expr::PatternMatch(pattern_match_expr) => todo!(),
+            Expr::PatternMatch(pattern_match_expr) => {
+                self.infer_pattern_match_expr(pattern_match_expr)
+            }
         };
         let typ = typ_res.map_err(|e| match e {
             Error::CannotInferExprType(_, _) => e,
@@ -157,6 +159,21 @@ impl<'a> TypeResolver<'a> {
         let no_typ = self.infer_type(&cond_expr.no.borrow())?;
         unify_typ(yes_typ.clone(), no_typ)?;
         unify_typ(ret_typ.clone(), yes_typ)?;
+        Ok(ret_typ)
+    }
+
+    fn infer_pattern_match_expr(&mut self, pattern_match_expr: &PatternMatchExpr) -> TypeResult {
+        let ret_typ = self.new_var();
+        let inferred_matched_typ = self.infer_type(&pattern_match_expr.matched.borrow())?;
+        for (pattern, expr) in &pattern_match_expr.branches {
+            let expr_ptr = &*expr.borrow() as *const Expr;
+            self.push_curr_context(expr_ptr);
+            let pattern_typ = self.instantiate_pattern_typ(pattern);
+            unify_typ(pattern_typ, inferred_matched_typ.clone())?;
+            let inferred_expr_typ = self.infer_type(&expr.borrow())?;
+            self.pop_curr_context();
+            unify_typ(ret_typ.clone(), inferred_expr_typ)?;
+        }
         Ok(ret_typ)
     }
 
@@ -326,6 +343,26 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
+    fn instantiate_pattern_typ(&mut self, pattern: &Pattern) -> Rc<RefCell<Type>> {
+        match pattern {
+            Pattern::Tuple(patterns) => {
+                let typs = patterns
+                    .iter()
+                    .map(|pattern| self.instantiate_pattern_typ(pattern))
+                    .collect();
+                Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
+            Pattern::Identifier(span) => {
+                let typ = self.new_var();
+                let name = self.lexer.str_from_span(span);
+                self.insert_binding_to_local_ctx(name, typ.clone());
+                typ
+            }
+            Pattern::Literal(literal_expr) => self.infer_literal_expr(literal_expr).unwrap(),
+            Pattern::None => self.new_var(),
+        }
+    }
+
     fn new_var(&mut self) -> Rc<RefCell<Type>> {
         let typ = Rc::new(RefCell::new(Type::Variable(Variable::Unbound(
             self.var_id_in_local_ctx,
@@ -406,10 +443,14 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) -> Result<(), E
         {
             Ok(())
         }
-        (Type::Fun(typs_a), Type::Fun(typs_b)) if typs_a.len() == typs_b.len() => typs_a
-            .into_iter()
-            .zip(typs_b)
-            .try_for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b)),
+        (Type::Tuple(typs_a), Type::Tuple(typs_b)) | (Type::Fun(typs_a), Type::Fun(typs_b))
+            if typs_a.len() == typs_b.len() =>
+        {
+            typs_a
+                .into_iter()
+                .zip(typs_b)
+                .try_for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b))
+        }
         _ => Err(Error::CannotUnifyType(typ_a, typ_b)),
     }
 }
