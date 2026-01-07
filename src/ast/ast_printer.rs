@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr,
-        TupleExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, Pattern,
+        PatternMatchExpr, TupleExpr, VarExpr,
     },
     lexer::Lexer,
     terminal_colors::{BLUE, END, YELLOW},
@@ -46,7 +46,9 @@ impl<'a> AstPrinter<'a> {
             Expr::LetIn(let_in_expr) => self.pretty_print_let_in_expr(let_in_expr),
             Expr::BinOp(bin_op_expr) => self.pretty_print_bin_op_expr(bin_op_expr),
             Expr::Conditional(cond_expr) => self.pretty_print_cond_expr(cond_expr),
-            Expr::PatternMatch(pattern_match_expr) => todo!(),
+            Expr::PatternMatch(pattern_match_expr) => {
+                self.pretty_print_pattern_match_expr(pattern_match_expr)
+            }
         }
     }
 
@@ -143,6 +145,35 @@ impl<'a> AstPrinter<'a> {
         self.pretty_print_expr(&cond_expr.no.borrow());
     }
 
+    fn pretty_print_pattern_match_expr(&mut self, pattern_match_expr: &PatternMatchExpr) {
+        println!("{}{BLUE}PatternMatchExpr{END}", self.indent);
+        println!("{}├─▸ matched:", self.indent);
+        let orig_indent = self.indent.clone();
+        self.indent += "│   ";
+        self.pretty_print_expr(&pattern_match_expr.matched.borrow());
+        self.indent = orig_indent.clone();
+        println!("{}└─▸ branches:", self.indent);
+        for (i, branch) in pattern_match_expr.branches.iter().enumerate() {
+            self.indent = orig_indent.clone();
+            if i < pattern_match_expr.branches.len() - 1 {
+                println!(
+                    "{}    ├─▸ with {}:",
+                    self.indent,
+                    self.pattern_to_string(&branch.0)
+                );
+                self.indent += "    │   ";
+            } else {
+                println!(
+                    "{}    └─▸ with {}:",
+                    self.indent,
+                    self.pattern_to_string(&branch.0)
+                );
+                self.indent += "        ";
+            }
+            self.pretty_print_expr(&branch.1.borrow());
+        }
+    }
+
     fn pretty_print_let_in_expr(&mut self, let_in_expr: &LetInExpr) {
         let bind_name = self.lexer.str_from_span(&let_in_expr.bind.0);
         println!("{}{BLUE}LetInExpr{END}", self.indent);
@@ -163,10 +194,33 @@ impl<'a> AstPrinter<'a> {
     }
 
     fn pretty_print_literal_expr(&mut self, literal_expr: &LiteralExpr) {
-        let value = match literal_expr {
+        println!(
+            "{}{BLUE}LiteralExpr{END} ({})",
+            self.indent,
+            self.literal_expr_to_string(literal_expr)
+        );
+    }
+
+    fn literal_expr_to_string(&self, literal_expr: &LiteralExpr) -> String {
+        match literal_expr {
             LiteralExpr::Integer(val, _) => val.to_string(),
             LiteralExpr::Unit(_) => "unit".to_string(),
-        };
-        println!("{}{BLUE}LiteralExpr{END} ({value})", self.indent,);
+        }
+    }
+
+    fn pattern_to_string(&self, pattern: &Pattern) -> String {
+        match pattern {
+            Pattern::Tuple(elements) => {
+                let elements = elements
+                    .iter()
+                    .map(|p| self.pattern_to_string(p))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("({elements})")
+            }
+            Pattern::Identifier(span) => self.lexer.str_from_span(span).to_string(),
+            Pattern::Literal(literal_expr) => self.literal_expr_to_string(literal_expr),
+            Pattern::None => "_".to_string(),
+        }
     }
 }
