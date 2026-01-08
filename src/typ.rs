@@ -697,6 +697,11 @@ mod test {
     }
 
     #[test]
+    fn tuple() {
+        assert_type_of_last_bind("let f = (1, (2, 3), 4)", "(int * (int * int) * int)");
+    }
+
+    #[test]
     fn let_in() {
         assert_type_of_last_bind("let x = 5 let y = let x = fun x -> x in x 5", "int");
     }
@@ -730,6 +735,14 @@ mod test {
     #[test]
     fn conditional() {
         assert_type_of_last_bind("let x = if 1 > 0 then 3 else 5", "int");
+    }
+
+    #[test]
+    fn pattern_matching() {
+        assert_type_of_last_bind(
+            "let x = match (1, (2, 3)) with (_, (_, a)) -> a | _ -> 0",
+            "int",
+        );
     }
 
     #[test]
@@ -786,6 +799,34 @@ mod test {
         if let Error::CannotBindToUnit(_, _) = e {
         } else {
             panic!("Incorrect error type");
+        }
+    }
+
+    #[test]
+    fn mismatch_pattern_matching_patterns() {
+        let e = assert_error("let x = match (1, 2) with (1, 2) -> 1 | 2 -> 2");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::CannotUnifyType(_, _) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
+        }
+    }
+
+    #[test]
+    fn mismatch_pattern_matching_branches() {
+        let e = assert_error("let x = match (1, (1 > 2)) with (a, _) -> a | (_, a) -> a");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::CannotUnifyType(_, _) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
         }
     }
 
