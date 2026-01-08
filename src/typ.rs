@@ -3,7 +3,7 @@ use core::fmt::Formatter;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use crate::ast::CondExpr;
+use crate::ast::{CondExpr, Pattern, PatternMatchExpr, TupleExpr};
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
@@ -14,6 +14,7 @@ use crate::{
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Type {
     Fun(Vec<Rc<RefCell<Type>>>),
+    Tuple(Vec<Rc<RefCell<Type>>>),
     Primitive(Primitive),
     Variable(Variable),
 }
@@ -114,6 +115,10 @@ impl<'a> TypeResolver<'a> {
                 typ
             }
             Expr::Conditional(cond_expr) => self.infer_cond_expr(cond_expr),
+            Expr::Tuple(tuple_expr) => self.infer_tuple_expr(tuple_expr),
+            Expr::PatternMatch(pattern_match_expr) => {
+                self.infer_pattern_match_expr(pattern_match_expr)
+            }
         };
         let typ = typ_res.map_err(|e| match e {
             Error::CannotInferExprType(_, _) => e,
@@ -157,6 +162,21 @@ impl<'a> TypeResolver<'a> {
         Ok(ret_typ)
     }
 
+    fn infer_pattern_match_expr(&mut self, pattern_match_expr: &PatternMatchExpr) -> TypeResult {
+        let ret_typ = self.new_var();
+        let inferred_matched_typ = self.infer_type(&pattern_match_expr.matched.borrow())?;
+        for (pattern, expr) in &pattern_match_expr.branches {
+            let expr_ptr = &*expr.borrow() as *const Expr;
+            self.push_curr_context(expr_ptr);
+            let pattern_typ = self.instantiate_pattern_typ(pattern);
+            unify_typ(pattern_typ, inferred_matched_typ.clone())?;
+            let inferred_expr_typ = self.infer_type(&expr.borrow())?;
+            self.pop_curr_context();
+            unify_typ(ret_typ.clone(), inferred_expr_typ)?;
+        }
+        Ok(ret_typ)
+    }
+
     fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> TypeResult {
         let name = self.lexer.str_from_span(&let_in_expr.bind.0);
         let typ = self.infer_type(&let_in_expr.bind.1.borrow())?;
@@ -175,6 +195,15 @@ impl<'a> TypeResolver<'a> {
         let ret_typ = self.new_var();
         let inferred_typ = self.infer_type(&application_expr.fun.borrow())?;
         self.unify_application_typ(arg_typs, ret_typ, inferred_typ)
+    }
+
+    fn infer_tuple_expr(&mut self, tuple_expr: &TupleExpr) -> TypeResult {
+        let typs = tuple_expr
+            .elements
+            .iter()
+            .map(|e| self.infer_type(&e.borrow()))
+            .collect::<Result<Vec<Rc<RefCell<Type>>>, Error>>()?;
+        Ok(Rc::new(RefCell::new(Type::Tuple(typs))))
     }
 
     fn unify_application_typ(
@@ -307,6 +336,30 @@ impl<'a> TypeResolver<'a> {
                 self.var_id_in_local_ctx += 1;
                 Rc::new(RefCell::new(inst_typ))
             }
+            Type::Tuple(typs) => {
+                let typs = typs.into_iter().map(|t| self.instantiate_typ(t)).collect();
+                Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
+        }
+    }
+
+    fn instantiate_pattern_typ(&mut self, pattern: &Pattern) -> Rc<RefCell<Type>> {
+        match pattern {
+            Pattern::Tuple(patterns) => {
+                let typs = patterns
+                    .iter()
+                    .map(|pattern| self.instantiate_pattern_typ(pattern))
+                    .collect();
+                Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
+            Pattern::Identifier(span) => {
+                let typ = self.new_var();
+                let name = self.lexer.str_from_span(span);
+                self.insert_binding_to_local_ctx(name, typ.clone());
+                typ
+            }
+            Pattern::Literal(literal_expr) => self.infer_literal_expr(literal_expr).unwrap(),
+            Pattern::None => self.new_var(),
         }
     }
 
@@ -390,10 +443,14 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) -> Result<(), E
         {
             Ok(())
         }
-        (Type::Fun(typs_a), Type::Fun(typs_b)) if typs_a.len() == typs_b.len() => typs_a
-            .into_iter()
-            .zip(typs_b)
-            .try_for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b)),
+        (Type::Tuple(typs_a), Type::Tuple(typs_b)) | (Type::Fun(typs_a), Type::Fun(typs_b))
+            if typs_a.len() == typs_b.len() =>
+        {
+            typs_a
+                .into_iter()
+                .zip(typs_b)
+                .try_for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b))
+        }
         _ => Err(Error::CannotUnifyType(typ_a, typ_b)),
     }
 }
@@ -424,7 +481,7 @@ fn rename(typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
 
 fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
     match typ.borrow().clone() {
-        Type::Fun(typs) => {
+        Type::Fun(typs) | Type::Tuple(typs) => {
             let mut unbounds = vec![];
             for typ in typs {
                 unbounds.append(&mut gather_unbounds(typ));
@@ -448,6 +505,15 @@ pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
                 .collect();
             Type::Fun(typs)
         }
+        Type::Tuple(typs) => {
+            let typs = typs
+                .into_iter()
+                .map(normalize_typ)
+                .map(RefCell::new)
+                .map(Rc::new)
+                .collect();
+            Type::Tuple(typs)
+        }
         Type::Primitive(_) => typ,
         Type::Variable(Variable::Link(typ)) => normalize_typ(typ),
         Type::Variable(Variable::Unbound(_)) => typ,
@@ -456,6 +522,14 @@ pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
 
 pub fn extract_fun_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
     if let Type::Fun(typs) = typ {
+        Some(typs)
+    } else {
+        None
+    }
+}
+
+pub fn extract_tuple_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
+    if let Type::Tuple(typs) = typ {
         Some(typs)
     } else {
         None
@@ -472,6 +546,17 @@ impl std::fmt::Display for Type {
                         write!(fmt, "{}", typ.borrow())?;
                     } else {
                         write!(fmt, "{} -> ", typ.borrow())?;
+                    }
+                }
+                write!(fmt, ")")
+            }
+            Type::Tuple(typs) => {
+                write!(fmt, "(")?;
+                for (i, typ) in typs.iter().enumerate() {
+                    if i == typs.len() - 1 {
+                        write!(fmt, "{}", typ.borrow())?;
+                    } else {
+                        write!(fmt, "{} * ", typ.borrow())?;
                     }
                 }
                 write!(fmt, ")")
@@ -612,6 +697,11 @@ mod test {
     }
 
     #[test]
+    fn tuple() {
+        assert_type_of_last_bind("let f = (1, (2, 3), 4)", "(int * (int * int) * int)");
+    }
+
+    #[test]
     fn let_in() {
         assert_type_of_last_bind("let x = 5 let y = let x = fun x -> x in x 5", "int");
     }
@@ -645,6 +735,14 @@ mod test {
     #[test]
     fn conditional() {
         assert_type_of_last_bind("let x = if 1 > 0 then 3 else 5", "int");
+    }
+
+    #[test]
+    fn pattern_matching() {
+        assert_type_of_last_bind(
+            "let x = match (1, (2, 3)) with (_, (_, a)) -> a | _ -> 0",
+            "int",
+        );
     }
 
     #[test]
@@ -701,6 +799,34 @@ mod test {
         if let Error::CannotBindToUnit(_, _) = e {
         } else {
             panic!("Incorrect error type");
+        }
+    }
+
+    #[test]
+    fn mismatch_pattern_matching_patterns() {
+        let e = assert_error("let x = match (1, 2) with (1, 2) -> 1 | 2 -> 2");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::CannotUnifyType(_, _) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
+        }
+    }
+
+    #[test]
+    fn mismatch_pattern_matching_branches() {
+        let e = assert_error("let x = match (1, (1 > 2)) with (a, _) -> a | (_, a) -> a");
+
+        if let Error::CannotInferExprType(_, e) = e {
+            match *e {
+                Error::CannotUnifyType(_, _) => (),
+                _ => panic!("Incorrect error type"),
+            }
+        } else {
+            panic!("Expect error to wrapped");
         }
     }
 

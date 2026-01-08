@@ -7,6 +7,9 @@ Eq("=")
 If("if")
 Then("then")
 Else("else")
+Match("match")
+With("with")
+Pipe("\|")
 Arrow("->")
 Unit("\(\)")
 Plus("+")
@@ -19,8 +22,9 @@ Gte(">=")
 Gt(">")
 LeftParen("\(")
 RightParen("\)")
+Comma(",")
 Number("\d\d*")
-Identifier("\w(\w|_)*")
+Identifier("(\w|_)(\w|_)*")
 
 %RULES
 StmtList = StmtList Bind | Bind;
@@ -43,13 +47,26 @@ BinOp |
 LetIn |
 Parenthesize |
 AnonymousFun |
+Tuple |
+PatternMatch |
 If Expr Then Expr Else Expr;
+
+Tuple = LeftParen ExprList RightParen;
+
+ExprList = ExprList Comma Expr | Expr Comma Expr;
 
 AnonymousFun = Fun ParamList Arrow Expr;
 
 Parenthesize = LeftParen Expr RightParen;
 
 LetIn = Let Identifier Eq Expr In Expr;
+
+PatternMatch = Match Expr With Branches;
+Branches = Branches Pipe Branch | Branch;
+Branch = Pattern Arrow Expr;
+Pattern = LeftParen Patterns RightParen | SingularPattern;
+Patterns = Patterns Comma Pattern | Pattern Comma Pattern;
+SingularPattern = Identifier | Literal;
 
 BinOp = 
 Expr Plus Expr |

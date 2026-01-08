@@ -33,6 +33,12 @@ impl<'a> TransformApplicationsVisitor<'a> {
         match &mut *expr.borrow_mut() {
             Expr::Application(application_expr) => self.transform_application(application_expr),
             Expr::Fun(fun_expr) => self.transform_expr(&fun_expr.body),
+            Expr::Tuple(tuple_expr) => {
+                tuple_expr
+                    .elements
+                    .iter()
+                    .for_each(|e| self.transform_expr(e));
+            }
             Expr::LetIn(let_in_expr) => {
                 self.transform_expr(&let_in_expr.bind.1);
                 self.transform_expr(&let_in_expr.expr);
@@ -45,6 +51,13 @@ impl<'a> TransformApplicationsVisitor<'a> {
                 self.transform_expr(&cond_expr.cond);
                 self.transform_expr(&cond_expr.yes);
                 self.transform_expr(&cond_expr.no);
+            }
+            Expr::PatternMatch(pattern_match_expr) => {
+                self.transform_expr(&pattern_match_expr.matched);
+                pattern_match_expr
+                    .branches
+                    .iter()
+                    .for_each(|(_, e)| self.transform_expr(e));
             }
             Expr::Literal(_) | Expr::Var(_) => (),
         }

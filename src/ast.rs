@@ -21,10 +21,12 @@ pub enum Expr {
     LetIn(LetInExpr),
     BinOp(BinOpExpr),
     Conditional(CondExpr),
+    PatternMatch(PatternMatchExpr),
+    Tuple(TupleExpr),
 }
 
 pub enum LiteralExpr {
-    Integer(i32, Span),
+    Integer(i64, Span),
     Unit(Span),
 }
 
@@ -66,6 +68,25 @@ pub struct CondExpr {
     pub span: Span,
 }
 
+pub struct PatternMatchExpr {
+    pub matched: Rc<RefCell<Expr>>,
+    pub branches: Vec<(Pattern, Rc<RefCell<Expr>>)>,
+    pub span: Span,
+}
+
+pub enum Pattern {
+    Tuple(Vec<Pattern>),
+    Identifier(Span),
+    Literal(LiteralExpr),
+    None,
+    // Variant Constructor
+}
+
+pub struct TupleExpr {
+    pub elements: Vec<Rc<RefCell<Expr>>>,
+    pub span: Span,
+}
+
 #[derive(Copy, Clone)]
 pub enum Operator {
     Plus,
@@ -102,11 +123,9 @@ impl Expr {
             Expr::LetIn(LetInExpr { span, .. }) => span,
             Expr::BinOp(BinOpExpr { span, .. }) => span,
             Expr::Conditional(CondExpr { span, .. }) => span,
+            Expr::Tuple(TupleExpr { span, .. }) => span,
+            Expr::PatternMatch(PatternMatchExpr { span, .. }) => span,
         }
-    }
-
-    pub fn integer(value: i32, span: Span) -> Self {
-        Self::Literal(LiteralExpr::Integer(value, span.clone()))
     }
 
     pub fn var(span: Span) -> Self {
@@ -145,6 +164,26 @@ impl ApplicationExpr {
     pub fn pretty_print(&self, lexer: &Lexer) {
         let mut printer = AstPrinter::new(lexer);
         printer.pretty_print_application_expr(self);
+    }
+}
+
+impl Pattern {
+    pub fn has_literal(&self) -> bool {
+        match self {
+            Pattern::Tuple(elements) => elements.iter().any(|e| e.has_literal()),
+            Pattern::Identifier(_) => false,
+            Pattern::Literal(_) => true,
+            Pattern::None => false,
+        }
+    }
+
+    pub fn has_identifier(&self) -> bool {
+        match self {
+            Pattern::Tuple(elements) => elements.iter().any(|e| e.has_identifier()),
+            Pattern::Identifier(_) => true,
+            Pattern::Literal(_) => false,
+            Pattern::None => false,
+        }
     }
 }
 
