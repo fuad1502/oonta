@@ -2,10 +2,22 @@ mod ast_printer;
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{ast::ast_printer::AstPrinter, lexer::Lexer, symbol::Span};
+use crate::{
+    ast::ast_printer::AstPrinter,
+    custom_types::{CustomTypes, Variant},
+    lexer::Lexer,
+    symbol::Span,
+};
 
+#[derive(Default)]
 pub struct Ast {
     pub binds: Vec<Bind>,
+    pub custom_types: CustomTypes,
+}
+
+pub enum Stmt {
+    Bind(Bind),
+    TypeDecl(Variant),
 }
 
 pub struct Bind {
@@ -100,15 +112,20 @@ pub enum Operator {
     Gt,
 }
 
-impl From<Bind> for Ast {
-    fn from(bind: Bind) -> Self {
-        Self { binds: vec![bind] }
+impl From<Stmt> for Ast {
+    fn from(stmt: Stmt) -> Self {
+        let mut ast = Self::default();
+        ast.insert_stmt(stmt);
+        ast
     }
 }
 
 impl Ast {
-    pub fn append(&mut self, bind: Bind) {
-        self.binds.push(bind);
+    pub fn insert_stmt(&mut self, stmt: Stmt) {
+        match stmt {
+            Stmt::Bind(bind) => self.binds.push(bind),
+            Stmt::TypeDecl(variant) => self.custom_types.add_variant(variant),
+        }
     }
 }
 

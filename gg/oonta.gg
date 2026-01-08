@@ -1,5 +1,7 @@
 %TERMINALS
 Let("let")
+Type("type")
+Of("of")
 In("in")
 Fun("fun")
 Rec("rec")
@@ -24,19 +26,26 @@ LeftParen("\(")
 RightParen("\)")
 Comma(",")
 Number("\d\d*")
-Identifier("(\w|_)(\w|_)*")
+Identifier("(\w|_)(\w|\W|_)*")
+ConstructorIdentifier("\W(\w|\W|_)*")
 
 %RULES
-StmtList = StmtList Bind | Bind;
+StmtList = StmtList Stmt | Stmt;
 
-Bind = VarBind | FunBind | RecFunBind | UnitBind;
+Stmt = VarBind | FunBind | RecFunBind | UnitBind | TypeDecl;
 VarBind = Let Identifier Eq Expr;
 FunBind = Let Identifier ParamList Eq Expr;
 RecFunBind = Let Rec Identifier ParamList Eq Expr;
 UnitBind = Let Unit Eq Expr;
+TypeDecl = Type Identifier Eq ConstructorList;
 
 ParamList = ParamList Param | Param;
 Param = Identifier;
+
+ConstructorList = ConstructorList Pipe Constructor | Constructor;
+Constructor = ConstructorIdentifier | ConstructorIdentifier Of TypeString;
+TypeString = LeftParen TypeStringList RightParen  | Identifier;
+TypeStringList = TypeStringList Star TypeString | TypeString Star TypeString;
 
 Expr = 
 Unit |
@@ -82,7 +91,7 @@ Expr Gt Expr;
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
 Arg = Identifier | Literal | Parenthesize;
 
-Literal = Number;
+Literal = Number | Unit;
 
 %PRIORITIES
 BinOp(3)

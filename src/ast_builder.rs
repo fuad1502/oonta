@@ -3,8 +3,9 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     ast::{
         ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator, Pattern,
-        PatternMatchExpr, TupleExpr,
+        PatternMatchExpr, Stmt, TupleExpr,
     },
+    custom_types::Variant,
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
 };
@@ -32,26 +33,27 @@ impl<'a> AstBuilder<'a> {
     pub fn visit(&mut self, cst_root: &Symbol) -> Ast {
         let rule = extract_rule(cst_root);
         match rule.number {
-            1 => self.visit_append_ast(&rule.components),
-            2 => Ast::from(self.visit_bind(&rule.components[0])),
+            1 => self.visit_insert_stmt(&rule.components),
+            2 => Ast::from(self.visit_stmt(&rule.components[0])),
             _ => unreachable!(),
         }
     }
 
-    fn visit_append_ast(&mut self, components: &[Symbol]) -> Ast {
+    fn visit_insert_stmt(&mut self, components: &[Symbol]) -> Ast {
         let mut ast = self.visit(&components[0]);
-        let new_bind = self.visit_bind(&components[1]);
-        ast.append(new_bind);
+        let stmt = self.visit_stmt(&components[1]);
+        ast.insert_stmt(stmt);
         ast
     }
 
-    fn visit_bind(&mut self, symbol: &Symbol) -> Bind {
+    fn visit_stmt(&mut self, symbol: &Symbol) -> Stmt {
         let rule = extract_rule(symbol);
         match rule.number {
-            3 => self.visit_var_bind(extract_components(&rule.components[0])),
-            4 => self.visit_fun_bind(extract_components(&rule.components[0]), false),
-            5 => self.visit_fun_bind(extract_components(&rule.components[0]), true),
-            6 => self.visit_unit_bind(extract_components(&rule.components[0])),
+            3 => Stmt::Bind(self.visit_var_bind(extract_components(&rule.components[0]))),
+            4 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), false)),
+            5 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), true)),
+            6 => Stmt::Bind(self.visit_unit_bind(extract_components(&rule.components[0]))),
+            7 => Stmt::TypeDecl(self.visit_type_decl(extract_components(&rule.components[0]))),
             _ => unreachable!(),
         }
     }
@@ -92,6 +94,10 @@ impl<'a> AstBuilder<'a> {
         }
     }
 
+    fn visit_type_decl(&mut self, components: &[Symbol]) -> Variant {
+        todo!()
+    }
+
     fn visit_expr(&mut self, symbol: &Symbol) -> Rc<RefCell<Expr>> {
         match symbol {
             Symbol::NonTerminal(non_terminal) => self.visit_non_terminal_expr(non_terminal),
@@ -101,16 +107,16 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            14..=23 | 53..=56 => self.visit_expr(&non_terminal.rule.components[0]),
-            24 => self.visit_if_then_else_expr(&non_terminal.rule.components),
-            25 => self.visit_tuple_expr(&non_terminal.rule.components),
-            28 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            29 => self.visit_expr(&non_terminal.rule.components[1]),
-            30 => self.visit_let_in_expr(&non_terminal.rule.components),
-            31 => self.visit_pattern_match_expr(&non_terminal.rule.components),
-            41..=49 => self.visit_binop_expr(&non_terminal.rule.components),
-            50 => self.visit_append_application(&non_terminal.rule.components),
-            51 | 52 => self.visit_application(&non_terminal.rule.components),
+            24..=33 | 63..=67 => self.visit_expr(&non_terminal.rule.components[0]),
+            34 => self.visit_if_then_else_expr(&non_terminal.rule.components),
+            35 => self.visit_tuple_expr(&non_terminal.rule.components),
+            38 => self.visit_anonymous_fun(&non_terminal.rule.components),
+            39 => self.visit_expr(&non_terminal.rule.components[1]),
+            40 => self.visit_let_in_expr(&non_terminal.rule.components),
+            41 => self.visit_pattern_match_expr(&non_terminal.rule.components),
+            51..=59 => self.visit_binop_expr(&non_terminal.rule.components),
+            60 => self.visit_append_application(&non_terminal.rule.components),
+            61 | 62 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -248,13 +254,13 @@ impl<'a> AstBuilder<'a> {
     fn visit_params(&self, symbol: &Symbol) -> Vec<Span> {
         let rule = extract_rule(symbol);
         match rule.number {
-            11 => {
+            13 => {
                 let mut param_list = self.visit_params(&rule.components[0]);
                 let param = self.visit_param(&rule.components[1]);
                 param_list.push(param);
                 param_list
             }
-            12 => vec![self.visit_param(&rule.components[0])],
+            14 => vec![self.visit_param(&rule.components[0])],
             _ => unreachable!(),
         }
     }
@@ -262,13 +268,13 @@ impl<'a> AstBuilder<'a> {
     fn visit_expr_list(&mut self, symbol: &Symbol) -> Vec<Rc<RefCell<Expr>>> {
         let rule = extract_rule(symbol);
         match rule.number {
-            26 => {
+            36 => {
                 let mut expr_list = self.visit_expr_list(&rule.components[0]);
                 let expr = self.visit_expr(&rule.components[2]);
                 expr_list.push(expr);
                 expr_list
             }
-            27 => {
+            37 => {
                 vec![
                     self.visit_expr(&rule.components[0]),
                     self.visit_expr(&rule.components[2]),
@@ -281,13 +287,13 @@ impl<'a> AstBuilder<'a> {
     fn visit_branches(&mut self, symbol: &Symbol) -> Vec<(Pattern, Rc<RefCell<Expr>>)> {
         let rule = extract_rule(symbol);
         match rule.number {
-            32 => {
+            42 => {
                 let mut branches = self.visit_branches(&rule.components[0]);
                 let branch = self.visit_branch(&rule.components[2]);
                 branches.push(branch);
                 branches
             }
-            33 => vec![self.visit_branch(&rule.components[0])],
+            43 => vec![self.visit_branch(&rule.components[0])],
             _ => unreachable!(),
         }
     }
@@ -302,11 +308,11 @@ impl<'a> AstBuilder<'a> {
     fn visit_pattern(&mut self, symbol: &Symbol) -> Pattern {
         let rule = extract_rule(symbol);
         match rule.number {
-            35 => {
+            45 => {
                 let patterns = self.visit_patterns(&rule.components[1]);
                 Pattern::Tuple(patterns)
             }
-            36 => self.visit_singular_pattern(&rule.components[0]),
+            46 => self.visit_singular_pattern(&rule.components[0]),
             _ => unreachable!(),
         }
     }
@@ -314,13 +320,13 @@ impl<'a> AstBuilder<'a> {
     fn visit_patterns(&mut self, symbol: &Symbol) -> Vec<Pattern> {
         let rule = extract_rule(symbol);
         match rule.number {
-            37 => {
+            47 => {
                 let mut patterns = self.visit_patterns(&rule.components[0]);
                 let pattern = self.visit_pattern(&rule.components[2]);
                 patterns.push(pattern);
                 patterns
             }
-            38 => vec![
+            48 => vec![
                 self.visit_pattern(&rule.components[0]),
                 self.visit_pattern(&rule.components[2]),
             ],
@@ -331,14 +337,14 @@ impl<'a> AstBuilder<'a> {
     fn visit_singular_pattern(&mut self, symbol: &Symbol) -> Pattern {
         let rule = extract_rule(symbol);
         match rule.number {
-            39 => {
+            49 => {
                 let span = extract_span(&rule.components[0]);
                 match self.lexer.str_from_span(span) {
                     "_" => Pattern::None,
                     _ => Pattern::Identifier(span.clone()),
                 }
             }
-            40 => {
+            50 => {
                 let literal = &rule.components[0];
                 let terminal = &extract_components(literal)[0];
                 Pattern::Literal(self.visit_literal_expr(extract_terminal(terminal)))
