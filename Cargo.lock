@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "jjik"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ce602cce1733a3092311f71a2dd052fbe0cb1946d86768c4c52a15e560513ed"
+checksum = "a6c19892f31cc5f14e6cb708d370ebc3ed3e81d76b9a0a6614d8e059af9dd6d1"
 dependencies = [
  "jlek",
 ]
