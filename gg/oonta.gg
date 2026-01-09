@@ -59,7 +59,7 @@ Expr =
     Tuple |
     PatternMatch |
     ConstructorIdentifier |
-    ConstructorIdentifier Expr |
+    ConstructorIdentifier Arg |
     If Expr Then Expr Else Expr;
 
 Tuple = LeftParen ExprList RightParen;
