@@ -2,8 +2,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator, Pattern,
-        PatternMatchExpr, Stmt, TupleExpr,
+        ApplicationExpr, Ast, Bind, CondExpr, ConstructExpr, Expr, LetInExpr, LiteralExpr,
+        Operator, Pattern, PatternMatchExpr, Stmt, TupleExpr,
     },
     custom_types::{Constructor, Variant},
     lexer::Lexer,
@@ -126,7 +126,21 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn visit_construction_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
-        todo!()
+        let id_span = extract_span(&components[0]);
+        let cons = self.lexer.str_from_span(id_span);
+        let (arg, span) = if components.len() == 2 {
+            let arg = self.visit_expr(&components[1]);
+            let span = Span::new(id_span.start_pos(), arg.borrow().span().end_pos());
+            (Some(arg), span)
+        } else {
+            (None, id_span.clone())
+        };
+        let construct_expr = ConstructExpr {
+            cons: cons.to_string(),
+            arg,
+            span,
+        };
+        Rc::new(RefCell::new(Expr::Construction(construct_expr)))
     }
 
     fn visit_if_then_else_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {

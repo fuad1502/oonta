@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, Pattern,
-        PatternMatchExpr, TupleExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+        LiteralExpr, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
     },
     lexer::Lexer,
     terminal_colors::{BLUE, END, YELLOW},
@@ -40,6 +40,7 @@ impl<'a> AstPrinter<'a> {
             Expr::Var(var_expr) => self.pretty_print_var_expr(var_expr),
             Expr::Fun(fun_expr) => self.pretty_print_fun_expr(fun_expr),
             Expr::Tuple(tuple_expr) => self.pretty_print_tuple_expr(tuple_expr),
+            Expr::Construction(construct_expr) => self.pretty_print_cons_expr(construct_expr),
             Expr::Application(application_expr) => {
                 self.pretty_print_application_expr(application_expr)
             }
@@ -49,7 +50,18 @@ impl<'a> AstPrinter<'a> {
             Expr::PatternMatch(pattern_match_expr) => {
                 self.pretty_print_pattern_match_expr(pattern_match_expr)
             }
-            Expr::Construction(construction_expr) => todo!(),
+        }
+    }
+
+    fn pretty_print_cons_expr(&mut self, construct_expr: &ConstructExpr) {
+        println!("{}{BLUE}ConstructExpr{END}", self.indent);
+        if let Some(arg) = &construct_expr.arg {
+            println!("{}├─▸ constructor: {}", self.indent, construct_expr.cons);
+            println!("{}└─▸ arg:", self.indent);
+            self.indent += "    ";
+            self.pretty_print_expr(&arg.borrow());
+        } else {
+            println!("{}└─▸ constructor: {}", self.indent, construct_expr.cons);
         }
     }
 
