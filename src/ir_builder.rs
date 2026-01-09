@@ -3,9 +3,10 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, Operator,
-        Pattern, PatternMatchExpr, TupleExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+        LiteralExpr, Operator, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
     },
+    custom_types::CustomTypes,
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs, normalize_typ},
@@ -15,6 +16,7 @@ pub mod ir;
 
 pub struct IRBuilder<'a> {
     type_map: &'a TypeMap,
+    custom_types: &'a CustomTypes,
     lexer: &'a Lexer,
     context: Option<Context>,
     module: Module,
@@ -28,7 +30,12 @@ struct Context {
 }
 
 impl<'a> IRBuilder<'a> {
-    pub fn new(type_map: &'a TypeMap, lexer: &'a Lexer, is_top_level: bool) -> Self {
+    pub fn new(
+        type_map: &'a TypeMap,
+        custom_types: &'a CustomTypes,
+        lexer: &'a Lexer,
+        is_top_level: bool,
+    ) -> Self {
         let main_fun_name = if is_top_level {
             "main".to_string()
         } else {
@@ -39,6 +46,7 @@ impl<'a> IRBuilder<'a> {
         module.new_function(main_fun_name.clone(), main_function);
         let builder = Self {
             type_map,
+            custom_types,
             lexer,
             context: Some(Context::new(main_fun_name)),
             module,
@@ -89,7 +97,7 @@ impl<'a> IRBuilder<'a> {
             Expr::PatternMatch(pattern_match_expr) => {
                 self.visit_patt_mat_expr(pattern_match_expr, expr_ptr)
             }
-            Expr::Construction(construction_expr) => todo!(),
+            Expr::Construction(construct_expr) => self.visit_construct_expr(construct_expr),
         }
     }
 
@@ -312,6 +320,26 @@ impl<'a> IRBuilder<'a> {
         self.pop_ctx();
 
         dispath_closure_ptr
+    }
+
+    fn visit_construct_expr(&mut self, construct_expr: &ConstructExpr) -> IRValue {
+        let cons_name = self.lexer.str_from_span(&construct_expr.cons);
+        let tag = self.custom_types.get_constructor_idx(cons_name);
+        let tag = IRValue::Pri(IRPri::I64(tag as i64));
+        let variant_ptr = self.malloc(8 * 2);
+        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+        let ptr = self
+            .curr_fun()
+            .getelemptr(variant_typ.clone(), variant_ptr.clone(), &[0, 0]);
+        self.curr_fun().store(tag, ptr);
+        if let Some(arg) = &construct_expr.arg {
+            let ptr = self
+                .curr_fun()
+                .getelemptr(variant_typ, variant_ptr.clone(), &[0, 0]);
+            let value = self.visit_expr(&arg.borrow());
+            self.curr_fun().store(value, ptr);
+        }
+        variant_ptr
     }
 
     fn visit_tuple_expr(&mut self, tuple_expr: &TupleExpr) -> IRValue {

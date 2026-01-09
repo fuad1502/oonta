@@ -53,6 +53,18 @@ impl CustomTypes {
             .expect("Only call this method after verifying constructor exists")
             .clone()
     }
+
+    pub fn get_constructor_idx(&self, name: &str) -> usize {
+        self.constructor_to_variant
+            .get(name)
+            .map(|variant_name| {
+                self.variant_to_constructors[variant_name]
+                    .iter()
+                    .position(|c| c == name)
+                    .unwrap()
+            })
+            .expect("Only call this method after verifying constructor exists")
+    }
 }
 
 impl Variant {

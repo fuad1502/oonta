@@ -90,7 +90,7 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Build LLVM module");
-        let module = build_module(&ast, &type_map, &lexer, self.top_level);
+        let module = build_module(&ast, &type_map, &custom_types, &lexer, self.top_level);
         self.dbg_end();
 
         self.dbg_start("Write LLVM module");
@@ -161,8 +161,14 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
     }
 }
 
-fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer, is_top_level: bool) -> Module {
-    let ir_builder = IRBuilder::new(type_map, lexer, is_top_level);
+fn build_module(
+    ast: &Ast,
+    type_map: &TypeMap,
+    custom_types: &CustomTypes,
+    lexer: &Lexer,
+    is_top_level: bool,
+) -> Module {
+    let ir_builder = IRBuilder::new(type_map, custom_types, lexer, is_top_level);
     ir_builder.build(ast)
 }
 
