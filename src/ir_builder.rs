@@ -402,24 +402,32 @@ impl<'a> IRBuilder<'a> {
         let exit_label = exit_bb.label().to_string();
 
         // 4. Visit branches
-        for (patt, expr) in &patt_mat_expr.branches {
+        for (i, (patt, expr)) in patt_mat_expr.branches.iter().enumerate() {
             let conds = self.gather_conds(patt, mat_typ.clone(), mat_val.clone());
             if !conds.is_empty() {
+                let is_last_branch = i == patt_mat_expr.branches.len() - 1;
                 // > Create breakage
                 let cond = self.conjunction(conds);
                 let then_label = self.curr_fun().add_new_bb("then");
-                let follow_label = self.curr_fun().add_new_bb("follow");
+                let follow_label = if is_last_branch {
+                    exit_label.clone()
+                } else {
+                    self.curr_fun().add_new_bb("follow")
+                };
                 self.curr_fun()
                     .cond_brk(cond, then_label.clone(), follow_label.clone());
                 // > Visit branch
                 self.curr_fun().set_bb(then_label);
                 let binds = self.gather_binds(patt, mat_typ.clone(), mat_val.clone());
                 self.visit_branch_expr(binds, &expr.borrow(), res_ptr.clone(), exit_label.clone());
-                self.curr_fun().set_bb(follow_label);
+                if !is_last_branch {
+                    self.curr_fun().set_bb(follow_label);
+                }
             } else {
                 // > Visit branch
                 let binds = self.gather_binds(patt, mat_typ.clone(), mat_val.clone());
                 self.visit_branch_expr(binds, &expr.borrow(), res_ptr.clone(), exit_label.clone());
+                break;
             }
         }
 
