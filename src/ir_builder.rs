@@ -335,7 +335,7 @@ impl<'a> IRBuilder<'a> {
         if let Some(arg) = &construct_expr.arg {
             let ptr = self
                 .curr_fun()
-                .getelemptr(variant_typ, variant_ptr.clone(), &[0, 0]);
+                .getelemptr(variant_typ, variant_ptr.clone(), &[0, 1]);
             let value = self.visit_expr(&arg.borrow());
             self.curr_fun().store(value, ptr);
         }
@@ -522,7 +522,34 @@ impl<'a> IRBuilder<'a> {
                 }
                 conditions
             }
-            Pattern::Constructor(_, _) => todo!(),
+            Pattern::Constructor(span, arg) => {
+                let mut conditions = vec![];
+                // Check tag
+                let ctor_name = self.lexer.str_from_span(span);
+                let expected_tag = self.custom_types.get_constructor_idx(ctor_name);
+                let expected_tag = IRValue::Pri(IRPri::I64(expected_tag as i64));
+                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+                let ptr = self
+                    .curr_fun()
+                    .getelemptr(variant_typ.clone(), value.clone(), &[0, 0]);
+                let tag = self.curr_fun().load(IRType::I64, ptr);
+                let is_tag_eq = self
+                    .curr_fun()
+                    .binop(IRType::I1, expected_tag, tag, Operator::Eq);
+                conditions.push(is_tag_eq);
+                // Check arg
+                if let Some(patt) = arg
+                    && patt.has_literal()
+                {
+                    let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                    let typ = normalize_typ(typ);
+                    let ir_typ = IRType::from(&typ);
+                    let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
+                    let value = self.curr_fun().load(ir_typ, ptr);
+                    conditions.append(&mut self.gather_conds(patt, typ, value));
+                }
+                conditions
+            }
             Pattern::Literal(literal_expr) => {
                 let literal_value = self.visit_literal_expr(literal_expr);
                 let conditional_value =
@@ -567,12 +594,21 @@ impl<'a> IRBuilder<'a> {
                 }
                 bindings
             }
-            Pattern::Constructor(_, _) => todo!(),
+            Pattern::Constructor(span, Some(pattern)) => {
+                let ctor_name = self.lexer.str_from_span(span);
+                let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                let typ = normalize_typ(typ);
+                let ir_typ = IRType::from(&typ);
+                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+                let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
+                let value = self.curr_fun().load(ir_typ, ptr);
+                self.gather_binds(pattern, typ, value)
+            }
             Pattern::Identifier(span) => {
                 let name = self.lexer.str_from_span(span);
                 vec![(name.to_string(), value)]
             }
-            Pattern::Literal(_) | Pattern::None => vec![],
+            Pattern::Constructor(_, None) | Pattern::Literal(_) | Pattern::None => vec![],
         }
     }
 
