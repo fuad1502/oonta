@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use crate::{
     ast::{
@@ -14,6 +14,7 @@ use crate::{
 pub struct AstBuilder<'a> {
     lexer: &'a Lexer,
     current_closure_ctx: Option<ClosureCtx>,
+    current_local_bindings: Option<LocalBindings>,
     ast: Ast,
     custom_types: CustomTypes,
 }
@@ -25,11 +26,18 @@ struct ClosureCtx {
     captures: Vec<String>,
 }
 
+#[derive(Default)]
+struct LocalBindings {
+    parent: Option<Box<LocalBindings>>,
+    bindings: HashSet<String>,
+}
+
 impl<'a> AstBuilder<'a> {
     pub fn new(lexer: &'a Lexer) -> Self {
         Self {
             lexer,
             current_closure_ctx: None,
+            current_local_bindings: None,
             ast: Ast::default(),
             custom_types: CustomTypes::default(),
         }
@@ -121,17 +129,17 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            24..=33 | 67..=71 => self.visit_expr(&non_terminal.rule.components[0]),
+            24..=33 | 69..=74 => self.visit_expr(&non_terminal.rule.components[0]),
             34 | 35 => self.visit_construction_expr(&non_terminal.rule.components),
             36 => self.visit_if_then_else_expr(&non_terminal.rule.components),
             37 => self.visit_tuple_expr(&non_terminal.rule.components),
             40 => self.visit_anonymous_fun(&non_terminal.rule.components),
             41 => self.visit_expr(&non_terminal.rule.components[1]),
-            42 => self.visit_let_in_expr(&non_terminal.rule.components),
-            43 => self.visit_pattern_match_expr(&non_terminal.rule.components),
-            55..=63 => self.visit_binop_expr(&non_terminal.rule.components),
-            64 => self.visit_append_application(&non_terminal.rule.components),
-            65 | 66 => self.visit_application(&non_terminal.rule.components),
+            42 | 43 => self.visit_let_in_expr(&non_terminal.rule.components),
+            44 | 45 => self.visit_pattern_match_expr(&non_terminal.rule.components),
+            57..=65 => self.visit_binop_expr(&non_terminal.rule.components),
+            66 => self.visit_append_application(&non_terminal.rule.components),
+            67 | 68 => self.visit_application(&non_terminal.rule.components),
             _ => unreachable!(),
         }
     }
@@ -168,7 +176,7 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_pattern_match_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         let matched = self.visit_expr(&components[1]);
-        let branches = self.visit_branches(&components[3]);
+        let branches = self.visit_branches(components.last().unwrap());
         let span = Span::new(
             extract_span(&components[0]).start_pos(),
             branches.last().unwrap().1.borrow().span().end_pos(),
@@ -199,9 +207,12 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_let_in_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
         // TODO: Change LetInExpr to allow multiple binds and combine nested binds into one
+        self.push_local_bindings();
         let bind_name = extract_span(&components[1]).clone();
         let bind_expr = self.visit_expr(&components[3]);
+        self.insert_name_to_local_bindings(&bind_name);
         let expr = self.visit_expr(&components[5]);
+        self.pop_local_bindings();
         let span = Span::new(
             extract_span(&components[0]).start_pos(),
             expr.borrow().span().end_pos(),
@@ -379,41 +390,43 @@ impl<'a> AstBuilder<'a> {
     fn visit_branches(&mut self, symbol: &Symbol) -> Vec<(Pattern, Rc<RefCell<Expr>>)> {
         let rule = extract_rule(symbol);
         match rule.number {
-            44 => {
+            46 => {
                 let mut branches = self.visit_branches(&rule.components[0]);
                 let branch = self.visit_branch(&rule.components[2]);
                 branches.push(branch);
                 branches
             }
-            45 => vec![self.visit_branch(&rule.components[0])],
+            47 => vec![self.visit_branch(&rule.components[0])],
             _ => unreachable!(),
         }
     }
 
     fn visit_branch(&mut self, symbol: &Symbol) -> (Pattern, Rc<RefCell<Expr>>) {
+        self.push_local_bindings();
         let components = extract_components(symbol);
         let pattern = self.visit_pattern(&components[0]);
         let expr = self.visit_expr(&components[2]);
+        self.pop_local_bindings();
         (pattern, expr)
     }
 
     fn visit_pattern(&mut self, symbol: &Symbol) -> Pattern {
         let rule = extract_rule(symbol);
         match rule.number {
-            47 => {
+            49 => {
                 let patterns = self.visit_patterns(&rule.components[1]);
                 Pattern::Tuple(patterns)
             }
-            48 => {
+            50 => {
                 let span = extract_span(&rule.components[0]).clone();
                 let arg = self.visit_pattern(&rule.components[1]);
                 Pattern::Constructor(span, Some(Box::new(arg)))
             }
-            49 => {
+            51 => {
                 let span = extract_span(&rule.components[0]).clone();
                 Pattern::Constructor(span, None)
             }
-            50 => self.visit_singular_pattern(&rule.components[0]),
+            52 => self.visit_singular_pattern(&rule.components[0]),
             _ => unreachable!(),
         }
     }
@@ -421,13 +434,13 @@ impl<'a> AstBuilder<'a> {
     fn visit_patterns(&mut self, symbol: &Symbol) -> Vec<Pattern> {
         let rule = extract_rule(symbol);
         match rule.number {
-            51 => {
+            53 => {
                 let mut patterns = self.visit_patterns(&rule.components[0]);
                 let pattern = self.visit_pattern(&rule.components[2]);
                 patterns.push(pattern);
                 patterns
             }
-            52 => vec![
+            54 => vec![
                 self.visit_pattern(&rule.components[0]),
                 self.visit_pattern(&rule.components[2]),
             ],
@@ -438,14 +451,15 @@ impl<'a> AstBuilder<'a> {
     fn visit_singular_pattern(&mut self, symbol: &Symbol) -> Pattern {
         let rule = extract_rule(symbol);
         match rule.number {
-            53 => {
+            55 => {
                 let span = extract_span(&rule.components[0]);
+                self.insert_name_to_local_bindings(span);
                 match self.lexer.str_from_span(span) {
                     "_" => Pattern::None,
                     _ => Pattern::Identifier(span.clone()),
                 }
             }
-            54 => {
+            56 => {
                 let literal = &rule.components[0];
                 let terminal = &extract_components(literal)[0];
                 Pattern::Literal(self.visit_literal_expr(extract_terminal(terminal)))
@@ -511,7 +525,8 @@ impl<'a> AstBuilder<'a> {
 
     fn new_var_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         let name = self.lexer.get_lexeme(terminal);
-        if let Some(ctx) = &mut self.current_closure_ctx
+        if !self.does_local_bindings_have_name(name)
+            && let Some(ctx) = &mut self.current_closure_ctx
             && !ctx.is_in_params(name, self.lexer)
             && !ctx.is_recursive_name(name, self.lexer)
         {
@@ -537,6 +552,36 @@ impl<'a> AstBuilder<'a> {
             self.current_closure_ctx = Some(*parent);
         };
         current_closure_ctx
+    }
+
+    fn push_local_bindings(&mut self) {
+        let parent = self.current_local_bindings.take().map(Box::new);
+        let local_bindings = LocalBindings {
+            parent,
+            ..Default::default()
+        };
+        self.current_local_bindings = Some(local_bindings);
+    }
+
+    fn pop_local_bindings(&mut self) {
+        if let Some(parent) = self.current_local_bindings.take().map(|l| l.parent) {
+            self.current_local_bindings = parent.map(|l| *l);
+        }
+    }
+
+    fn insert_name_to_local_bindings(&mut self, span: &Span) {
+        if let Some(local_bindings) = &mut self.current_local_bindings {
+            let name = self.lexer.str_from_span(span);
+            local_bindings.insert_name(name.to_string());
+        }
+    }
+
+    fn does_local_bindings_have_name(&self, name: &str) -> bool {
+        if let Some(local_bindings) = &self.current_local_bindings {
+            local_bindings.has_name(name)
+        } else {
+            false
+        }
     }
 }
 
@@ -586,5 +631,21 @@ impl ClosureCtx {
             }
         }
         false
+    }
+}
+
+impl LocalBindings {
+    fn insert_name(&mut self, name: String) {
+        self.bindings.insert(name);
+    }
+
+    fn has_name(&self, name: &str) -> bool {
+        if self.bindings.contains(name) {
+            true
+        } else if let Some(parent) = &self.parent {
+            parent.has_name(name)
+        } else {
+            false
+        }
     }
 }

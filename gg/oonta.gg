@@ -70,9 +70,9 @@ AnonymousFun = Fun ParamList Arrow Expr;
 
 Parenthesize = LeftParen Expr RightParen;
 
-LetIn = Let Identifier Eq Expr In Expr;
+LetIn = Let Identifier Eq Expr In Expr | Let Unit Eq Expr In Expr;
 
-PatternMatch = Match Expr With Branches;
+PatternMatch = Match Expr With Branches | Match Expr With Pipe Branches;
 Branches = Branches Pipe Branch | Branch;
 Branch = Pattern Arrow Expr;
 Pattern =
@@ -95,7 +95,7 @@ BinOp =
     Expr Gt Expr;
 
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
-Arg = Identifier | Literal | Parenthesize;
+Arg = Identifier | Literal | Tuple | Parenthesize;
 
 Literal = Number | Unit;
 

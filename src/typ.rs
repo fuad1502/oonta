@@ -190,6 +190,10 @@ impl<'a> TypeResolver<'a> {
     fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> TypeResult {
         let name = self.lexer.str_from_span(&let_in_expr.bind.0);
         let typ = self.infer_type(&let_in_expr.bind.1.borrow())?;
+        if name == "()" {
+            let unit = Rc::new(RefCell::new(Type::Primitive(Primitive::Unit)));
+            unify_typ(typ.clone(), unit)?;
+        }
         self.insert_binding_to_local_ctx(name, typ);
         let ret_typ = self.new_var();
         let typ = self.infer_type(&let_in_expr.expr.borrow())?;
@@ -834,6 +838,11 @@ mod test {
     #[test]
     fn constructor_no_arg() {
         assert_type_of_last_bind("type t = Wrap of int | Empty let x = Empty", "t");
+    }
+
+    #[test]
+    fn unit_let_in() {
+        assert_type_of_last_bind("let f g x = let () = g x in x", "(('a -> ()) -> 'a -> 'a)");
     }
 
     #[test]
