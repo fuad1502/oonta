@@ -2,17 +2,11 @@ mod ast_printer;
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{
-    ast::ast_printer::AstPrinter,
-    custom_types::{CustomTypes, Variant},
-    lexer::Lexer,
-    symbol::Span,
-};
+use crate::{ast::ast_printer::AstPrinter, custom_types::Variant, lexer::Lexer, symbol::Span};
 
 #[derive(Default)]
 pub struct Ast {
     pub binds: Vec<Bind>,
-    pub custom_types: CustomTypes,
 }
 
 pub enum Stmt {
@@ -62,7 +56,7 @@ pub struct ApplicationExpr {
 }
 
 pub struct ConstructExpr {
-    pub cons: String,
+    pub cons: Span,
     pub arg: Option<Rc<RefCell<Expr>>>,
     pub span: Span,
 }
@@ -119,20 +113,17 @@ pub enum Operator {
     Gt,
 }
 
-impl From<Stmt> for Ast {
-    fn from(stmt: Stmt) -> Self {
+impl From<Bind> for Ast {
+    fn from(bind: Bind) -> Self {
         let mut ast = Self::default();
-        ast.insert_stmt(stmt);
+        ast.insert_stmt(bind);
         ast
     }
 }
 
 impl Ast {
-    pub fn insert_stmt(&mut self, stmt: Stmt) {
-        match stmt {
-            Stmt::Bind(bind) => self.binds.push(bind),
-            Stmt::TypeDecl(variant) => self.custom_types.add_variant(variant),
-        }
+    pub fn insert_stmt(&mut self, bind: Bind) {
+        self.binds.push(bind);
     }
 }
 

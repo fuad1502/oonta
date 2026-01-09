@@ -5,7 +5,7 @@ use crate::{
         ApplicationExpr, Ast, Bind, CondExpr, ConstructExpr, Expr, LetInExpr, LiteralExpr,
         Operator, Pattern, PatternMatchExpr, Stmt, TupleExpr,
     },
-    custom_types::{Constructor, Variant},
+    custom_types::{Constructor, CustomTypes, Variant},
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
     typ::{Primitive, Type},
@@ -14,6 +14,8 @@ use crate::{
 pub struct AstBuilder<'a> {
     lexer: &'a Lexer,
     current_closure_ctx: Option<ClosureCtx>,
+    ast: Ast,
+    custom_types: CustomTypes,
 }
 
 struct ClosureCtx {
@@ -28,34 +30,43 @@ impl<'a> AstBuilder<'a> {
         Self {
             lexer,
             current_closure_ctx: None,
+            ast: Ast::default(),
+            custom_types: CustomTypes::default(),
         }
     }
 
-    pub fn visit(&mut self, cst_root: &Symbol) -> Ast {
+    pub fn build(mut self, cst_root: &Symbol) -> (Ast, CustomTypes) {
+        self.visit_stmts(cst_root);
+        (self.ast, self.custom_types)
+    }
+
+    fn visit_stmts(&mut self, cst_root: &Symbol) {
         let rule = extract_rule(cst_root);
         match rule.number {
-            1 => self.visit_insert_stmt(&rule.components),
-            2 => Ast::from(self.visit_stmt(&rule.components[0])),
+            1 => {
+                self.visit_stmts(&rule.components[0]);
+                self.visit_stmt(&rule.components[1]);
+            }
+            2 => {
+                self.visit_stmt(&rule.components[0]);
+            }
             _ => unreachable!(),
         }
     }
 
-    fn visit_insert_stmt(&mut self, components: &[Symbol]) -> Ast {
-        let mut ast = self.visit(&components[0]);
-        let stmt = self.visit_stmt(&components[1]);
-        ast.insert_stmt(stmt);
-        ast
-    }
-
-    fn visit_stmt(&mut self, symbol: &Symbol) -> Stmt {
+    fn visit_stmt(&mut self, symbol: &Symbol) {
         let rule = extract_rule(symbol);
-        match rule.number {
+        let stmt = match rule.number {
             3 => Stmt::Bind(self.visit_var_bind(extract_components(&rule.components[0]))),
             4 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), false)),
             5 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), true)),
             6 => Stmt::Bind(self.visit_unit_bind(extract_components(&rule.components[0]))),
             7 => Stmt::TypeDecl(self.visit_type_decl(extract_components(&rule.components[0]))),
             _ => unreachable!(),
+        };
+        match stmt {
+            Stmt::Bind(bind) => self.ast.insert_stmt(bind),
+            Stmt::TypeDecl(variant) => self.custom_types.add_variant(variant),
         }
     }
 
@@ -126,20 +137,15 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn visit_construction_expr(&mut self, components: &[Symbol]) -> Rc<RefCell<Expr>> {
-        let id_span = extract_span(&components[0]);
-        let cons = self.lexer.str_from_span(id_span);
+        let cons = extract_span(&components[0]).clone();
         let (arg, span) = if components.len() == 2 {
             let arg = self.visit_expr(&components[1]);
-            let span = Span::new(id_span.start_pos(), arg.borrow().span().end_pos());
+            let span = Span::new(cons.start_pos(), arg.borrow().span().end_pos());
             (Some(arg), span)
         } else {
-            (None, id_span.clone())
+            (None, cons.clone())
         };
-        let construct_expr = ConstructExpr {
-            cons: cons.to_string(),
-            arg,
-            span,
-        };
+        let construct_expr = ConstructExpr { cons, arg, span };
         Rc::new(RefCell::new(Expr::Construction(construct_expr)))
     }
 

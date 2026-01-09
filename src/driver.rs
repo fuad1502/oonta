@@ -10,6 +10,7 @@ use crate::{
     application_visitor::transform_applications,
     ast::{Ast, Expr},
     ast_builder::AstBuilder,
+    custom_types::CustomTypes,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
     parser::Parser,
@@ -68,14 +69,14 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Build AST");
-        let ast = build_ast(&lexer, &cst_root);
+        let (ast, custom_types) = build_ast(&lexer, &cst_root);
         if self.debug_phases {
             ast.pretty_print(&lexer);
         }
         self.dbg_end();
 
         self.dbg_start("Resolve types");
-        let mut type_map = match resolve_types(&lexer, &ast) {
+        let mut type_map = match resolve_types(&lexer, &ast, &custom_types) {
             Ok(type_map) => type_map,
             Err(e) => return Err(e.report(&lexer)),
         };
@@ -133,13 +134,17 @@ fn parse(lexer: &mut Lexer) -> Result<Symbol, String> {
     parser.parse(lexer)
 }
 
-fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Ast {
-    let mut ast_builder = AstBuilder::new(lexer);
-    ast_builder.visit(cst_root)
+fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> (Ast, CustomTypes) {
+    let ast_builder = AstBuilder::new(lexer);
+    ast_builder.build(cst_root)
 }
 
-fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, typ::Error> {
-    let type_resolver = TypeResolver::new(lexer);
+fn resolve_types(
+    lexer: &Lexer,
+    ast: &Ast,
+    custom_types: &CustomTypes,
+) -> Result<TypeMap, typ::Error> {
+    let type_resolver = TypeResolver::new(custom_types, lexer);
     type_resolver.resolve_types(ast)
 }
 

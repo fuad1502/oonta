@@ -55,13 +55,14 @@ impl<'a> AstPrinter<'a> {
 
     fn pretty_print_cons_expr(&mut self, construct_expr: &ConstructExpr) {
         println!("{}{BLUE}ConstructExpr{END}", self.indent);
+        let cons = self.lexer.str_from_span(&construct_expr.cons);
         if let Some(arg) = &construct_expr.arg {
-            println!("{}├─▸ constructor: {}", self.indent, construct_expr.cons);
+            println!("{}├─▸ constructor: {}", self.indent, cons);
             println!("{}└─▸ arg:", self.indent);
             self.indent += "    ";
             self.pretty_print_expr(&arg.borrow());
         } else {
-            println!("{}└─▸ constructor: {}", self.indent, construct_expr.cons);
+            println!("{}└─▸ constructor: {}", self.indent, cons);
         }
     }
 

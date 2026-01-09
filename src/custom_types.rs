@@ -40,6 +40,19 @@ impl CustomTypes {
             self.constructor_to_argument.insert(c.name, c.argument);
         });
     }
+
+    pub fn get_constructor_typ(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
+        self.constructor_to_variant
+            .get(name)
+            .map(|variant_name| Rc::new(RefCell::new(Type::Custom(variant_name.to_string()))))
+    }
+
+    pub fn get_constructor_arg(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
+        self.constructor_to_argument
+            .get(name)
+            .expect("Only call this method after verifying constructor exists")
+            .clone()
+    }
 }
 
 impl Variant {
