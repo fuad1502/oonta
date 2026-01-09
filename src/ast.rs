@@ -27,6 +27,7 @@ pub struct Bind {
 
 pub enum Expr {
     Literal(LiteralExpr),
+    Construction(ConstructionExpr),
     Var(VarExpr),
     Fun(FunExpr),
     Application(ApplicationExpr),
@@ -57,6 +58,12 @@ pub struct FunExpr {
 pub struct ApplicationExpr {
     pub fun: Rc<RefCell<Expr>>,
     pub binds: Vec<Rc<RefCell<Expr>>>,
+    pub span: Span,
+}
+
+pub struct ConstructionExpr {
+    pub cons: String,
+    pub arg: Option<Rc<RefCell<Expr>>>,
     pub span: Span,
 }
 
@@ -142,6 +149,7 @@ impl Expr {
             Expr::Conditional(CondExpr { span, .. }) => span,
             Expr::Tuple(TupleExpr { span, .. }) => span,
             Expr::PatternMatch(PatternMatchExpr { span, .. }) => span,
+            Expr::Construction(ConstructionExpr { span, .. }) => span,
         }
     }
 

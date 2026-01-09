@@ -120,6 +120,7 @@ impl<'a> TypeResolver<'a> {
             Expr::PatternMatch(pattern_match_expr) => {
                 self.infer_pattern_match_expr(pattern_match_expr)
             }
+            Expr::Construction(construction_expr) => todo!(),
         };
         let typ = typ_res.map_err(|e| match e {
             Error::CannotInferExprType(_, _) => e,

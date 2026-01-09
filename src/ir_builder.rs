@@ -89,6 +89,7 @@ impl<'a> IRBuilder<'a> {
             Expr::PatternMatch(pattern_match_expr) => {
                 self.visit_patt_mat_expr(pattern_match_expr, expr_ptr)
             }
+            Expr::Construction(construction_expr) => todo!(),
         }
     }
 

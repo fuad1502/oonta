@@ -49,6 +49,7 @@ impl<'a> AstPrinter<'a> {
             Expr::PatternMatch(pattern_match_expr) => {
                 self.pretty_print_pattern_match_expr(pattern_match_expr)
             }
+            Expr::Construction(construction_expr) => todo!(),
         }
     }
 

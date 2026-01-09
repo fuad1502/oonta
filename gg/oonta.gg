@@ -58,6 +58,8 @@ Parenthesize |
 AnonymousFun |
 Tuple |
 PatternMatch |
+ConstructorIdentifier |
+ConstructorIdentifier Expr |
 If Expr Then Expr Else Expr;
 
 Tuple = LeftParen ExprList RightParen;
