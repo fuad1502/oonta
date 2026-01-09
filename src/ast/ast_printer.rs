@@ -232,7 +232,14 @@ impl<'a> AstPrinter<'a> {
                     .join(", ");
                 format!("({elements})")
             }
-            Pattern::Identifier(span) => self.lexer.str_from_span(span).to_string(),
+            Pattern::Constructor(span, Some(arg)) => format!(
+                "{} {}",
+                self.lexer.str_from_span(span),
+                self.pattern_to_string(arg)
+            ),
+            Pattern::Constructor(span, None) | Pattern::Identifier(span) => {
+                self.lexer.str_from_span(span).to_string()
+            }
             Pattern::Literal(literal_expr) => self.literal_expr_to_string(literal_expr),
             Pattern::None => "_".to_string(),
         }

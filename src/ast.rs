@@ -89,10 +89,10 @@ pub struct PatternMatchExpr {
 
 pub enum Pattern {
     Tuple(Vec<Pattern>),
+    Constructor(Span, Option<Box<Pattern>>),
     Identifier(Span),
     Literal(LiteralExpr),
     None,
-    // Variant Constructor
 }
 
 pub struct TupleExpr {
@@ -190,6 +190,7 @@ impl Pattern {
             Pattern::Identifier(_) => false,
             Pattern::Literal(_) => true,
             Pattern::None => false,
+            Pattern::Constructor(_, _) => true,
         }
     }
 
@@ -199,6 +200,8 @@ impl Pattern {
             Pattern::Identifier(_) => true,
             Pattern::Literal(_) => false,
             Pattern::None => false,
+            Pattern::Constructor(_, None) => false,
+            Pattern::Constructor(_, Some(arg)) => arg.has_identifier(),
         }
     }
 }

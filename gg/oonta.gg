@@ -48,19 +48,19 @@ TypeString = LeftParen TypeStringList RightParen  | Identifier;
 TypeStringList = TypeStringList Star TypeString | TypeString Star TypeString;
 
 Expr = 
-Unit |
-Identifier |
-Literal |
-Application |
-BinOp |
-LetIn |
-Parenthesize |
-AnonymousFun |
-Tuple |
-PatternMatch |
-ConstructorIdentifier |
-ConstructorIdentifier Expr |
-If Expr Then Expr Else Expr;
+    Unit |
+    Identifier |
+    Literal |
+    Application |
+    BinOp |
+    LetIn |
+    Parenthesize |
+    AnonymousFun |
+    Tuple |
+    PatternMatch |
+    ConstructorIdentifier |
+    ConstructorIdentifier Expr |
+    If Expr Then Expr Else Expr;
 
 Tuple = LeftParen ExprList RightParen;
 
@@ -75,20 +75,24 @@ LetIn = Let Identifier Eq Expr In Expr;
 PatternMatch = Match Expr With Branches;
 Branches = Branches Pipe Branch | Branch;
 Branch = Pattern Arrow Expr;
-Pattern = LeftParen Patterns RightParen | SingularPattern;
+Pattern =
+    LeftParen Patterns RightParen |
+    ConstructorIdentifier Pattern |
+    ConstructorIdentifier |
+    SingularPattern;
 Patterns = Patterns Comma Pattern | Pattern Comma Pattern;
 SingularPattern = Identifier | Literal;
 
 BinOp = 
-Expr Plus Expr |
-Expr Minus Expr |
-Expr Star Expr |
-Expr Slash Expr |
-Expr Eq Expr |
-Expr Lte Expr |
-Expr Lt Expr |
-Expr Gte Expr |
-Expr Gt Expr;
+    Expr Plus Expr |
+    Expr Minus Expr |
+    Expr Star Expr |
+    Expr Slash Expr |
+    Expr Eq Expr |
+    Expr Lte Expr |
+    Expr Lt Expr |
+    Expr Gte Expr |
+    Expr Gt Expr;
 
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
 Arg = Identifier | Literal | Parenthesize;

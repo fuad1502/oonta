@@ -178,7 +178,7 @@ impl<'a> TypeResolver<'a> {
         for (pattern, expr) in &pattern_match_expr.branches {
             let expr_ptr = &*expr.borrow() as *const Expr;
             self.push_curr_context(expr_ptr);
-            let pattern_typ = self.instantiate_pattern_typ(pattern);
+            let pattern_typ = self.instantiate_pattern_typ(pattern)?;
             unify_typ(pattern_typ, inferred_matched_typ.clone())?;
             let inferred_expr_typ = self.infer_type(&expr.borrow())?;
             self.pop_curr_context();
@@ -374,24 +374,49 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    fn instantiate_pattern_typ(&mut self, pattern: &Pattern) -> Rc<RefCell<Type>> {
+    fn instantiate_pattern_typ(&mut self, pattern: &Pattern) -> TypeResult {
         match pattern {
             Pattern::Tuple(patterns) => {
                 let typs = patterns
                     .iter()
                     .map(|pattern| self.instantiate_pattern_typ(pattern))
-                    .collect();
-                Rc::new(RefCell::new(Type::Tuple(typs)))
+                    .collect::<Result<Vec<Rc<RefCell<Type>>>, Error>>()?;
+                Ok(Rc::new(RefCell::new(Type::Tuple(typs))))
             }
             Pattern::Identifier(span) => {
                 let typ = self.new_var();
                 let name = self.lexer.str_from_span(span);
                 self.insert_binding_to_local_ctx(name, typ.clone());
-                typ
+                Ok(typ)
             }
-            Pattern::Literal(literal_expr) => self.infer_literal_expr(literal_expr).unwrap(),
-            Pattern::None => self.new_var(),
+            Pattern::Constructor(span, arg) => {
+                self.instantiate_construct_pattern_typ(span.clone(), arg)
+            }
+            Pattern::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
+            Pattern::None => Ok(self.new_var()),
         }
+    }
+
+    fn instantiate_construct_pattern_typ(
+        &mut self,
+        cons: Span,
+        arg: &Option<Box<Pattern>>,
+    ) -> TypeResult {
+        let name = self.lexer.str_from_span(&cons);
+        let variant_typ = match self.custom_types.get_constructor_typ(name) {
+            Some(typ) => typ,
+            None => return Err(Error::UnboundConstructor(cons)),
+        };
+        match (arg, self.custom_types.get_constructor_arg(name)) {
+            (Some(arg), Some(typ)) => {
+                let arg_typ = self.instantiate_pattern_typ(arg)?;
+                unify_typ(arg_typ, typ)?;
+            }
+            (None, None) => (),
+            (Some(_), None) => return Err(Error::WrongConstructorArgument(cons, 0)),
+            (None, Some(_)) => return Err(Error::WrongConstructorArgument(cons, 1)),
+        }
+        Ok(variant_typ)
     }
 
     fn new_var(&mut self) -> Rc<RefCell<Type>> {

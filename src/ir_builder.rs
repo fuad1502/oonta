@@ -522,6 +522,7 @@ impl<'a> IRBuilder<'a> {
                 }
                 conditions
             }
+            Pattern::Constructor(_, _) => todo!(),
             Pattern::Literal(literal_expr) => {
                 let literal_value = self.visit_literal_expr(literal_expr);
                 let conditional_value =
@@ -566,6 +567,7 @@ impl<'a> IRBuilder<'a> {
                 }
                 bindings
             }
+            Pattern::Constructor(_, _) => todo!(),
             Pattern::Identifier(span) => {
                 let name = self.lexer.str_from_span(span);
                 vec![(name.to_string(), value)]
