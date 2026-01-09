@@ -129,8 +129,8 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
         match non_terminal.rule.number {
-            24..=33 | 69..=74 => self.visit_expr(&non_terminal.rule.components[0]),
-            34 | 35 => self.visit_construction_expr(&non_terminal.rule.components),
+            24..=33 | 69..=72 | 74..=75 => self.visit_expr(&non_terminal.rule.components[0]),
+            34 | 35 | 73 => self.visit_construction_expr(&non_terminal.rule.components),
             36 => self.visit_if_then_else_expr(&non_terminal.rule.components),
             37 => self.visit_tuple_expr(&non_terminal.rule.components),
             40 => self.visit_anonymous_fun(&non_terminal.rule.components),
@@ -274,6 +274,7 @@ impl<'a> AstBuilder<'a> {
                 let expr = Expr::Literal(literal_expr);
                 Rc::new(RefCell::new(expr))
             }
+            TerminalClass::ConstructorIdentifier => todo!(),
             _ => unreachable!(),
         }
     }

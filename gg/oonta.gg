@@ -95,7 +95,7 @@ BinOp =
     Expr Gt Expr;
 
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
-Arg = Identifier | Literal | Tuple | Parenthesize;
+Arg = Identifier | Literal | Tuple | Parenthesize | ConstructorIdentifier;
 
 Literal = Number | Unit;
 
