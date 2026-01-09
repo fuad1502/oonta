@@ -15,6 +15,7 @@ use crate::{
 pub enum Type {
     Fun(Vec<Rc<RefCell<Type>>>),
     Tuple(Vec<Rc<RefCell<Type>>>),
+    Custom(String),
     Primitive(Primitive),
     Variable(Variable),
 }
@@ -325,7 +326,7 @@ impl<'a> TypeResolver<'a> {
 
     fn instantiate_typ(&mut self, typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         match typ.borrow().clone() {
-            Type::Primitive(_) => typ.clone(),
+            Type::Primitive(_) | Type::Custom(_) => typ.clone(),
             Type::Variable(Variable::Link(typ)) => self.instantiate_typ(typ),
             Type::Fun(typs) => {
                 let typs = typs.into_iter().map(|t| self.instantiate_typ(t)).collect();
@@ -489,7 +490,7 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
             unbounds
         }
         Type::Variable(Variable::Unbound(_)) => vec![typ.clone()],
-        Type::Primitive(_) | Type::Variable(Variable::Link(_)) => vec![],
+        Type::Primitive(_) | Type::Custom(_) | Type::Variable(Variable::Link(_)) => vec![],
     }
 }
 
@@ -514,7 +515,7 @@ pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
                 .collect();
             Type::Tuple(typs)
         }
-        Type::Primitive(_) => typ,
+        Type::Primitive(_) | Type::Custom(_) => typ,
         Type::Variable(Variable::Link(typ)) => normalize_typ(typ),
         Type::Variable(Variable::Unbound(_)) => typ,
     }
@@ -573,6 +574,7 @@ impl std::fmt::Display for Type {
                 Primitive::Bool => write!(fmt, "bool"),
                 Primitive::Unit => write!(fmt, "()"),
             },
+            Type::Custom(name) => write!(fmt, "{name}"),
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
         }
     }

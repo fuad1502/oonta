@@ -5,9 +5,10 @@ use crate::{
         ApplicationExpr, Ast, Bind, CondExpr, Expr, LetInExpr, LiteralExpr, Operator, Pattern,
         PatternMatchExpr, Stmt, TupleExpr,
     },
-    custom_types::Variant,
+    custom_types::{Constructor, Variant},
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
+    typ::{Primitive, Type},
 };
 
 pub struct AstBuilder<'a> {
@@ -95,7 +96,9 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn visit_type_decl(&mut self, components: &[Symbol]) -> Variant {
-        todo!()
+        let name = self.lexer.str_from_span(extract_span(&components[1]));
+        let constructors = self.visit_constructors(&components[3]);
+        Variant::new(name.to_string(), constructors)
     }
 
     fn visit_expr(&mut self, symbol: &Symbol) -> Rc<RefCell<Expr>> {
@@ -243,6 +246,70 @@ impl<'a> AstBuilder<'a> {
         match terminal.class() {
             TerminalClass::Number => self.new_integer_expr(terminal),
             TerminalClass::Unit => self.new_unit_expr(terminal),
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_constructors(&self, symbol: &Symbol) -> Vec<Constructor> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            16 => {
+                let mut constructors = self.visit_constructors(&rule.components[0]);
+                constructors.push(self.visit_constructor(&rule.components[2]));
+                constructors
+            }
+            17 => vec![self.visit_constructor(&rule.components[0])],
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_constructor(&self, symbol: &Symbol) -> Constructor {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            18 => {
+                let name = self.lexer.str_from_span(extract_span(&rule.components[0]));
+                Constructor::no_arg(name.to_string())
+            }
+            19 => {
+                let name = self.lexer.str_from_span(extract_span(&rule.components[0]));
+                let typ = self.visit_type_string(&rule.components[2]);
+                Constructor::new(name.to_string(), typ)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_type_string(&self, symbol: &Symbol) -> Rc<RefCell<Type>> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            20 => {
+                let typs = self.visit_type_strings(&rule.components[1]);
+                Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
+            21 => {
+                let id = self.lexer.str_from_span(extract_span(&rule.components[0]));
+                match id {
+                    "int" => Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))),
+                    "bool" => Rc::new(RefCell::new(Type::Primitive(Primitive::Bool))),
+                    _ => Rc::new(RefCell::new(Type::Custom(id.to_string()))),
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_type_strings(&self, symbol: &Symbol) -> Vec<Rc<RefCell<Type>>> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            22 => {
+                let mut typs = self.visit_type_strings(&rule.components[0]);
+                typs.push(self.visit_type_string(&rule.components[2]));
+                typs
+            }
+            23 => vec![
+                self.visit_type_string(&rule.components[0]),
+                self.visit_type_string(&rule.components[2]),
+            ],
             _ => unreachable!(),
         }
     }
