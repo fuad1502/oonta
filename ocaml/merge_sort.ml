@@ -1,54 +1,47 @@
-type list = Empty | Cat of (int * list)
+type list =
+  | Empty
+  | Cat of (int * list)
 
-let rec map f l =
-  match l with
+let rec map f lst =
+  match lst with
   | Empty -> ()
   | Cat (x, l) ->
       let () = f x in
       map f l
 
-let rec reverse_aux acc l =
-  match l with Empty -> acc | Cat (x, xs) -> reverse_aux (Cat (x, acc)) xs
+let rec split_aux lst acc_left acc_right =
+  match lst with
+  | Empty -> (acc_left, acc_right)
+  | Cat (head, rest) -> split_aux rest acc_right (Cat (head, acc_left))
 
-let reverse l = reverse_aux Empty l
-let l = Cat (5, Cat (4, Cat (3, Cat (2, Empty))))
-let rev_l = reverse l
-let () = map print_int rev_l
+let split lst = split_aux lst Empty Empty
 
-(* let rec merge cmp left right = *)
-(*   match left, right with *)
-(*   | [], ys -> ys *)
-(*   | xs, [] -> xs *)
-(*   | x :: xs', y :: ys' -> *)
-(*       if cmp x y <= 0 then *)
-(*         x :: merge cmp xs' right *)
-(*       else *)
-(*         y :: merge cmp left ys' *)
-(**)
-(* let split lst = *)
-(*   let rec aux slow fast acc = *)
-(*     match fast with *)
-(*     | [] -> (List.rev acc, slow) *)
-(*     | [_] -> (List.rev acc, slow) *)
-(*     | _ :: _ :: fast' -> *)
-(*         match slow with *)
-(*         | [] -> (List.rev acc, []) *)
-(*         | s :: slow' -> aux slow' fast' (s :: acc) *)
-(*   in *)
-(*   aux lst lst [] *)
-(**)
-(* let rec merge_sort cmp lst = *)
-(*   match lst with *)
-(*   | [] | [_] -> lst *)
-(*   | _ -> *)
-(*       let left, right = split lst in *)
-(*       merge cmp (merge_sort cmp left) (merge_sort cmp right) *)
-(**)
-(* let () = *)
-(*   let unsorted = [5; 3; 8; 1; 2; 7; 4; 6] in *)
-(*   let sorted = merge_sort compare unsorted in *)
-(*   Printf.printf "Original: [%s]\n" *)
-(*     (String.concat "; " (List.map string_of_int unsorted)); *)
-(*   Printf.printf "Sorted:   [%s]\n" *)
-(*     (String.concat "; " (List.map string_of_int sorted)) *)
-(**)
+let rec merge left right =
+  match (left, right) with
+  | Empty, right -> right
+  | lest, Empty -> lest
+  | Cat (left_head, left_rest), Cat (right_head, right_rest) ->
+      if left_head <= right_head then
+        Cat (left_head, merge left_rest right)
+      else
+        Cat (right_head, merge left right_rest)
+
+let rec merge_sort lst =
+  match lst with
+  | Empty -> lst
+  | Cat (_, Empty) -> lst
+  | _ ->
+      let splitted_lst = split lst in
+      let left =
+        match splitted_lst with
+        | lst, _ -> lst
+      in
+      let right =
+        match splitted_lst with
+        | _, lst -> lst
+      in
+      merge (merge_sort left) (merge_sort right)
+
+let lst = Cat (1, Cat (5, Cat (3, Cat (4, Cat (2, Empty)))))
+let sorted_lst = merge_sort lst
+let () = map print_int sorted_lst
