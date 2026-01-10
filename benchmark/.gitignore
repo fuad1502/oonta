@@ -1,0 +1,9 @@
+*.ll
+*.o
+*.out
+*.cmi
+*.cmo
+*.cmx
+input.txt
+output.txt
+output.ref.txt
