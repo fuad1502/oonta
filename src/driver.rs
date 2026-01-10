@@ -263,14 +263,14 @@ mod test {
         let mut cmd = Command::new(out_path.with_extension("out"));
         let output = cmd.output().unwrap();
         let stdout = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(stdout, "9\n120\n3\n");
+        assert_eq!(stdout, "9\n120\n");
         clear_output_files(&out_path);
     }
 
     fn src_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("ocaml")
-            .join("test.ml")
+            .join("arithmetic.ml")
     }
 
     fn out_path(postfix: &str) -> PathBuf {
