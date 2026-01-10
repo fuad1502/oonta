@@ -1,5 +1,7 @@
 %TERMINALS
 Let("let")
+Type("type")
+Of("of")
 In("in")
 Fun("fun")
 Rec("rec")
@@ -24,32 +26,41 @@ LeftParen("\(")
 RightParen("\)")
 Comma(",")
 Number("\d\d*")
-Identifier("(\w|_)(\w|_)*")
+Identifier("(\w|_)(\w|\W|\d|_)*")
+ConstructorIdentifier("\W(\w|\W|\d|_)*")
 
 %RULES
-StmtList = StmtList Bind | Bind;
+StmtList = StmtList Stmt | Stmt;
 
-Bind = VarBind | FunBind | RecFunBind | UnitBind;
+Stmt = VarBind | FunBind | RecFunBind | UnitBind | TypeDecl;
 VarBind = Let Identifier Eq Expr;
 FunBind = Let Identifier ParamList Eq Expr;
 RecFunBind = Let Rec Identifier ParamList Eq Expr;
 UnitBind = Let Unit Eq Expr;
+TypeDecl = Type Identifier Eq ConstructorList | Type Identifier Eq Pipe ConstructorList;
 
 ParamList = ParamList Param | Param;
 Param = Identifier;
 
+ConstructorList = ConstructorList Pipe Constructor | Constructor;
+Constructor = ConstructorIdentifier | ConstructorIdentifier Of TypeString;
+TypeString = LeftParen TypeStringList RightParen  | Identifier;
+TypeStringList = TypeStringList Star TypeString | TypeString Star TypeString;
+
 Expr = 
-Unit |
-Identifier |
-Literal |
-Application |
-BinOp |
-LetIn |
-Parenthesize |
-AnonymousFun |
-Tuple |
-PatternMatch |
-If Expr Then Expr Else Expr;
+    Unit |
+    Identifier |
+    Literal |
+    Application |
+    BinOp |
+    LetIn |
+    Parenthesize |
+    AnonymousFun |
+    Tuple |
+    PatternMatch |
+    ConstructorIdentifier |
+    ConstructorIdentifier Arg |
+    If Expr Then Expr Else Expr;
 
 Tuple = LeftParen ExprList RightParen;
 
@@ -59,30 +70,34 @@ AnonymousFun = Fun ParamList Arrow Expr;
 
 Parenthesize = LeftParen Expr RightParen;
 
-LetIn = Let Identifier Eq Expr In Expr;
+LetIn = Let Identifier Eq Expr In Expr | Let Unit Eq Expr In Expr;
 
-PatternMatch = Match Expr With Branches;
+PatternMatch = Match Expr With Branches | Match Expr With Pipe Branches;
 Branches = Branches Pipe Branch | Branch;
-Branch = Pattern Arrow Expr;
-Pattern = LeftParen Patterns RightParen | SingularPattern;
+Branch = Pattern Arrow Expr | Patterns Arrow Expr;
+Pattern =
+    LeftParen Patterns RightParen |
+    ConstructorIdentifier Pattern |
+    ConstructorIdentifier |
+    SingularPattern;
 Patterns = Patterns Comma Pattern | Pattern Comma Pattern;
 SingularPattern = Identifier | Literal;
 
 BinOp = 
-Expr Plus Expr |
-Expr Minus Expr |
-Expr Star Expr |
-Expr Slash Expr |
-Expr Eq Expr |
-Expr Lte Expr |
-Expr Lt Expr |
-Expr Gte Expr |
-Expr Gt Expr;
+    Expr Plus Expr |
+    Expr Minus Expr |
+    Expr Star Expr |
+    Expr Slash Expr |
+    Expr Eq Expr |
+    Expr Lte Expr |
+    Expr Lt Expr |
+    Expr Gte Expr |
+    Expr Gt Expr;
 
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
-Arg = Identifier | Literal | Parenthesize;
+Arg = Identifier | Literal | Tuple | Parenthesize | ConstructorIdentifier;
 
-Literal = Number;
+Literal = Number | Unit;
 
 %PRIORITIES
 BinOp(3)

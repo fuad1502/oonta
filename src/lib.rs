@@ -2,6 +2,7 @@ mod application_visitor;
 mod ast;
 mod ast_builder;
 pub mod cmd;
+mod custom_types;
 pub mod driver;
 mod ir_builder;
 pub mod terminal_colors;

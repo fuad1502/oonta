@@ -39,6 +39,11 @@ impl<'a> TransformApplicationsVisitor<'a> {
                     .iter()
                     .for_each(|e| self.transform_expr(e));
             }
+            Expr::Construction(construction_expr) => {
+                if let Some(arg) = &construction_expr.arg {
+                    self.transform_expr(arg);
+                }
+            }
             Expr::LetIn(let_in_expr) => {
                 self.transform_expr(&let_in_expr.bind.1);
                 self.transform_expr(&let_in_expr.expr);

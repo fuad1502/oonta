@@ -3,9 +3,10 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, Expr, FunExpr, LetInExpr, LiteralExpr, Operator,
-        Pattern, PatternMatchExpr, TupleExpr, VarExpr,
+        ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+        LiteralExpr, Operator, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
     },
+    custom_types::CustomTypes,
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs, normalize_typ},
@@ -15,6 +16,7 @@ pub mod ir;
 
 pub struct IRBuilder<'a> {
     type_map: &'a TypeMap,
+    custom_types: &'a CustomTypes,
     lexer: &'a Lexer,
     context: Option<Context>,
     module: Module,
@@ -28,7 +30,12 @@ struct Context {
 }
 
 impl<'a> IRBuilder<'a> {
-    pub fn new(type_map: &'a TypeMap, lexer: &'a Lexer, is_top_level: bool) -> Self {
+    pub fn new(
+        type_map: &'a TypeMap,
+        custom_types: &'a CustomTypes,
+        lexer: &'a Lexer,
+        is_top_level: bool,
+    ) -> Self {
         let main_fun_name = if is_top_level {
             "main".to_string()
         } else {
@@ -39,6 +46,7 @@ impl<'a> IRBuilder<'a> {
         module.new_function(main_fun_name.clone(), main_function);
         let builder = Self {
             type_map,
+            custom_types,
             lexer,
             context: Some(Context::new(main_fun_name)),
             module,
@@ -89,6 +97,7 @@ impl<'a> IRBuilder<'a> {
             Expr::PatternMatch(pattern_match_expr) => {
                 self.visit_patt_mat_expr(pattern_match_expr, expr_ptr)
             }
+            Expr::Construction(construct_expr) => self.visit_construct_expr(construct_expr),
         }
     }
 
@@ -313,6 +322,26 @@ impl<'a> IRBuilder<'a> {
         dispath_closure_ptr
     }
 
+    fn visit_construct_expr(&mut self, construct_expr: &ConstructExpr) -> IRValue {
+        let cons_name = self.lexer.str_from_span(&construct_expr.cons);
+        let tag = self.custom_types.get_constructor_idx(cons_name);
+        let tag = IRValue::Pri(IRPri::I64(tag as i64));
+        let variant_ptr = self.malloc(8 * 2);
+        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+        let ptr = self
+            .curr_fun()
+            .getelemptr(variant_typ.clone(), variant_ptr.clone(), &[0, 0]);
+        self.curr_fun().store(tag, ptr);
+        if let Some(arg) = &construct_expr.arg {
+            let ptr = self
+                .curr_fun()
+                .getelemptr(variant_typ, variant_ptr.clone(), &[0, 1]);
+            let value = self.visit_expr(&arg.borrow());
+            self.curr_fun().store(value, ptr);
+        }
+        variant_ptr
+    }
+
     fn visit_tuple_expr(&mut self, tuple_expr: &TupleExpr) -> IRValue {
         let tuple_ptr = self.malloc(8 * tuple_expr.elements.len());
         let values: Vec<IRValue> = tuple_expr
@@ -373,24 +402,32 @@ impl<'a> IRBuilder<'a> {
         let exit_label = exit_bb.label().to_string();
 
         // 4. Visit branches
-        for (patt, expr) in &patt_mat_expr.branches {
+        for (i, (patt, expr)) in patt_mat_expr.branches.iter().enumerate() {
             let conds = self.gather_conds(patt, mat_typ.clone(), mat_val.clone());
             if !conds.is_empty() {
+                let is_last_branch = i == patt_mat_expr.branches.len() - 1;
                 // > Create breakage
                 let cond = self.conjunction(conds);
                 let then_label = self.curr_fun().add_new_bb("then");
-                let follow_label = self.curr_fun().add_new_bb("follow");
+                let follow_label = if is_last_branch {
+                    exit_label.clone()
+                } else {
+                    self.curr_fun().add_new_bb("follow")
+                };
                 self.curr_fun()
                     .cond_brk(cond, then_label.clone(), follow_label.clone());
                 // > Visit branch
                 self.curr_fun().set_bb(then_label);
                 let binds = self.gather_binds(patt, mat_typ.clone(), mat_val.clone());
                 self.visit_branch_expr(binds, &expr.borrow(), res_ptr.clone(), exit_label.clone());
-                self.curr_fun().set_bb(follow_label);
+                if !is_last_branch {
+                    self.curr_fun().set_bb(follow_label);
+                }
             } else {
                 // > Visit branch
                 let binds = self.gather_binds(patt, mat_typ.clone(), mat_val.clone());
                 self.visit_branch_expr(binds, &expr.borrow(), res_ptr.clone(), exit_label.clone());
+                break;
             }
         }
 
@@ -493,6 +530,34 @@ impl<'a> IRBuilder<'a> {
                 }
                 conditions
             }
+            Pattern::Constructor(span, arg) => {
+                let mut conditions = vec![];
+                // Check tag
+                let ctor_name = self.lexer.str_from_span(span);
+                let expected_tag = self.custom_types.get_constructor_idx(ctor_name);
+                let expected_tag = IRValue::Pri(IRPri::I64(expected_tag as i64));
+                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+                let ptr = self
+                    .curr_fun()
+                    .getelemptr(variant_typ.clone(), value.clone(), &[0, 0]);
+                let tag = self.curr_fun().load(IRType::I64, ptr);
+                let is_tag_eq = self
+                    .curr_fun()
+                    .binop(IRType::I1, expected_tag, tag, Operator::Eq);
+                conditions.push(is_tag_eq);
+                // Check arg
+                if let Some(patt) = arg
+                    && patt.has_literal()
+                {
+                    let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                    let typ = normalize_typ(typ);
+                    let ir_typ = IRType::from(&typ);
+                    let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
+                    let value = self.curr_fun().load(ir_typ, ptr);
+                    conditions.append(&mut self.gather_conds(patt, typ, value));
+                }
+                conditions
+            }
             Pattern::Literal(literal_expr) => {
                 let literal_value = self.visit_literal_expr(literal_expr);
                 let conditional_value =
@@ -537,11 +602,21 @@ impl<'a> IRBuilder<'a> {
                 }
                 bindings
             }
+            Pattern::Constructor(span, Some(pattern)) => {
+                let ctor_name = self.lexer.str_from_span(span);
+                let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                let typ = normalize_typ(typ);
+                let ir_typ = IRType::from(&typ);
+                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+                let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
+                let value = self.curr_fun().load(ir_typ, ptr);
+                self.gather_binds(pattern, typ, value)
+            }
             Pattern::Identifier(span) => {
                 let name = self.lexer.str_from_span(span);
                 vec![(name.to_string(), value)]
             }
-            Pattern::Literal(_) | Pattern::None => vec![],
+            Pattern::Constructor(_, None) | Pattern::Literal(_) | Pattern::None => vec![],
         }
     }
 

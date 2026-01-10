@@ -3,7 +3,8 @@ use core::fmt::Formatter;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use crate::ast::{CondExpr, Pattern, PatternMatchExpr, TupleExpr};
+use crate::ast::{CondExpr, ConstructExpr, Pattern, PatternMatchExpr, TupleExpr};
+use crate::custom_types::CustomTypes;
 use crate::{
     ast::{ApplicationExpr, Ast, BinOpExpr, Expr, FunExpr, LetInExpr, LiteralExpr},
     lexer::Lexer,
@@ -15,6 +16,7 @@ use crate::{
 pub enum Type {
     Fun(Vec<Rc<RefCell<Type>>>),
     Tuple(Vec<Rc<RefCell<Type>>>),
+    Custom(String),
     Primitive(Primitive),
     Variable(Variable),
 }
@@ -50,6 +52,7 @@ pub struct TypeResolver<'a> {
     local_context: Option<(*const Expr, Rc<RefCell<Context>>)>,
     curr_context: Option<Rc<RefCell<Context>>>,
     var_id_in_local_ctx: usize,
+    custom_types: &'a CustomTypes,
     lexer: &'a Lexer,
 }
 
@@ -58,6 +61,8 @@ pub enum Error {
     CannotBindToUnit(Span, Rc<RefCell<Type>>),
     CannotInferExprType(Span, Box<Error>),
     UnboundVariable(Span),
+    UnboundConstructor(Span),
+    WrongConstructorArgument(Span, usize),
     CannotUnifyType(Rc<RefCell<Type>>, Rc<RefCell<Type>>),
     UnableToApply(Vec<Rc<RefCell<Type>>>, Rc<RefCell<Type>>),
 }
@@ -65,7 +70,7 @@ pub enum Error {
 type TypeResult = Result<Rc<RefCell<Type>>, Error>;
 
 impl<'a> TypeResolver<'a> {
-    pub fn new(lexer: &'a Lexer) -> Self {
+    pub fn new(custom_types: &'a CustomTypes, lexer: &'a Lexer) -> Self {
         let main_context = Rc::new(RefCell::new(Context::default()));
         let resolver = Self {
             type_map: TypeMap::default(),
@@ -73,6 +78,7 @@ impl<'a> TypeResolver<'a> {
             local_context: None,
             curr_context: None,
             var_id_in_local_ctx: 0,
+            custom_types,
             lexer,
         };
         resolver.insert_builtins_to_main_context()
@@ -99,6 +105,7 @@ impl<'a> TypeResolver<'a> {
     fn infer_type(&mut self, expr: &Expr) -> TypeResult {
         let typ_res = match expr {
             Expr::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
+            Expr::Construction(construct_expr) => self.infer_construct_expr(construct_expr),
             Expr::Var(var_expr) => self.infer_var_expr(&var_expr.id),
             Expr::Fun(fun_expr) => {
                 self.push_curr_context(expr as *const Expr);
@@ -121,7 +128,10 @@ impl<'a> TypeResolver<'a> {
             }
         };
         let typ = typ_res.map_err(|e| match e {
-            Error::CannotInferExprType(_, _) => e,
+            Error::CannotInferExprType(_, _)
+            | Error::UnboundVariable(_)
+            | Error::UnboundConstructor(_)
+            | Error::WrongConstructorArgument(_, _) => e,
             _ => Error::CannotInferExprType(expr.span().clone(), Box::new(e)),
         })?;
         self.type_map.insert(expr as *const Expr, typ.clone());
@@ -168,7 +178,7 @@ impl<'a> TypeResolver<'a> {
         for (pattern, expr) in &pattern_match_expr.branches {
             let expr_ptr = &*expr.borrow() as *const Expr;
             self.push_curr_context(expr_ptr);
-            let pattern_typ = self.instantiate_pattern_typ(pattern);
+            let pattern_typ = self.instantiate_pattern_typ(pattern)?;
             unify_typ(pattern_typ, inferred_matched_typ.clone())?;
             let inferred_expr_typ = self.infer_type(&expr.borrow())?;
             self.pop_curr_context();
@@ -180,6 +190,10 @@ impl<'a> TypeResolver<'a> {
     fn infer_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> TypeResult {
         let name = self.lexer.str_from_span(&let_in_expr.bind.0);
         let typ = self.infer_type(&let_in_expr.bind.1.borrow())?;
+        if name == "()" {
+            let unit = Rc::new(RefCell::new(Type::Primitive(Primitive::Unit)));
+            unify_typ(typ.clone(), unit)?;
+        }
         self.insert_binding_to_local_ctx(name, typ);
         let ret_typ = self.new_var();
         let typ = self.infer_type(&let_in_expr.expr.borrow())?;
@@ -282,11 +296,32 @@ impl<'a> TypeResolver<'a> {
                 let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Integer)));
                 let bool_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Bool)));
                 let typ = self.infer_type(&bin_op_expr.lhs.borrow())?;
-                unify_typ(int_typ.clone(), typ)?;
+                unify_typ(typ, int_typ.clone())?;
                 let typ = self.infer_type(&bin_op_expr.rhs.borrow())?;
-                unify_typ(int_typ.clone(), typ)?;
+                unify_typ(typ, int_typ.clone())?;
                 Ok(bool_typ)
             }
+        }
+    }
+
+    fn infer_construct_expr(&mut self, construct_expr: &ConstructExpr) -> TypeResult {
+        let expr_span = construct_expr.span.clone();
+        let cons_name = self.lexer.str_from_span(&construct_expr.cons);
+        if let Some(variant_typ) = self.custom_types.get_constructor_typ(cons_name) {
+            let arg_typ = self.custom_types.get_constructor_arg(cons_name);
+            match (&construct_expr.arg, arg_typ) {
+                (Some(expr), Some(arg_typ)) => {
+                    let typ = self.infer_type(&expr.borrow())?;
+                    unify_typ(typ, arg_typ)?;
+                }
+                (None, Some(_)) => return Err(Error::WrongConstructorArgument(expr_span, 1)),
+                (Some(_), None) => return Err(Error::WrongConstructorArgument(expr_span, 0)),
+                (None, None) => (),
+            }
+            Ok(variant_typ)
+        } else {
+            let cons_span = construct_expr.span.clone();
+            Err(Error::UnboundConstructor(cons_span))
         }
     }
 
@@ -325,7 +360,7 @@ impl<'a> TypeResolver<'a> {
 
     fn instantiate_typ(&mut self, typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
         match typ.borrow().clone() {
-            Type::Primitive(_) => typ.clone(),
+            Type::Primitive(_) | Type::Custom(_) => typ.clone(),
             Type::Variable(Variable::Link(typ)) => self.instantiate_typ(typ),
             Type::Fun(typs) => {
                 let typs = typs.into_iter().map(|t| self.instantiate_typ(t)).collect();
@@ -343,24 +378,49 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    fn instantiate_pattern_typ(&mut self, pattern: &Pattern) -> Rc<RefCell<Type>> {
+    fn instantiate_pattern_typ(&mut self, pattern: &Pattern) -> TypeResult {
         match pattern {
             Pattern::Tuple(patterns) => {
                 let typs = patterns
                     .iter()
                     .map(|pattern| self.instantiate_pattern_typ(pattern))
-                    .collect();
-                Rc::new(RefCell::new(Type::Tuple(typs)))
+                    .collect::<Result<Vec<Rc<RefCell<Type>>>, Error>>()?;
+                Ok(Rc::new(RefCell::new(Type::Tuple(typs))))
             }
             Pattern::Identifier(span) => {
                 let typ = self.new_var();
                 let name = self.lexer.str_from_span(span);
                 self.insert_binding_to_local_ctx(name, typ.clone());
-                typ
+                Ok(typ)
             }
-            Pattern::Literal(literal_expr) => self.infer_literal_expr(literal_expr).unwrap(),
-            Pattern::None => self.new_var(),
+            Pattern::Constructor(span, arg) => {
+                self.instantiate_construct_pattern_typ(span.clone(), arg)
+            }
+            Pattern::Literal(literal_expr) => self.infer_literal_expr(literal_expr),
+            Pattern::None => Ok(self.new_var()),
         }
+    }
+
+    fn instantiate_construct_pattern_typ(
+        &mut self,
+        cons: Span,
+        arg: &Option<Box<Pattern>>,
+    ) -> TypeResult {
+        let name = self.lexer.str_from_span(&cons);
+        let variant_typ = match self.custom_types.get_constructor_typ(name) {
+            Some(typ) => typ,
+            None => return Err(Error::UnboundConstructor(cons)),
+        };
+        match (arg, self.custom_types.get_constructor_arg(name)) {
+            (Some(arg), Some(typ)) => {
+                let arg_typ = self.instantiate_pattern_typ(arg)?;
+                unify_typ(arg_typ, typ)?;
+            }
+            (None, None) => (),
+            (Some(_), None) => return Err(Error::WrongConstructorArgument(cons, 0)),
+            (None, Some(_)) => return Err(Error::WrongConstructorArgument(cons, 1)),
+        }
+        Ok(variant_typ)
     }
 
     fn new_var(&mut self) -> Rc<RefCell<Type>> {
@@ -438,6 +498,7 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) -> Result<(), E
             Ok(())
         }
         (Type::Primitive(prim_a), Type::Primitive(prim_b)) if prim_a == prim_b => Ok(()),
+        (Type::Custom(name_a), Type::Custom(name_b)) if name_a == name_b => Ok(()),
         (Type::Variable(Variable::Unbound(var_a)), Type::Variable(Variable::Unbound(var_b)))
             if var_a == var_b =>
         {
@@ -489,7 +550,7 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
             unbounds
         }
         Type::Variable(Variable::Unbound(_)) => vec![typ.clone()],
-        Type::Primitive(_) | Type::Variable(Variable::Link(_)) => vec![],
+        Type::Primitive(_) | Type::Custom(_) | Type::Variable(Variable::Link(_)) => vec![],
     }
 }
 
@@ -514,7 +575,7 @@ pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
                 .collect();
             Type::Tuple(typs)
         }
-        Type::Primitive(_) => typ,
+        Type::Primitive(_) | Type::Custom(_) => typ,
         Type::Variable(Variable::Link(typ)) => normalize_typ(typ),
         Type::Variable(Variable::Unbound(_)) => typ,
     }
@@ -573,6 +634,7 @@ impl std::fmt::Display for Type {
                 Primitive::Bool => write!(fmt, "bool"),
                 Primitive::Unit => write!(fmt, "()"),
             },
+            Type::Custom(name) => write!(fmt, "{name}"),
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
         }
     }
@@ -628,7 +690,24 @@ impl Error {
                     e.report(lexer)
                 )
             }
-            Error::UnboundVariable(span) => format!("Unbound value {}", lexer.str_from_span(span)),
+            Error::UnboundVariable(span) => {
+                let line = lexer.show_span(span);
+                format!(
+                    "{line}\n{RED}Error{END}: unbound value {}",
+                    lexer.str_from_span(span)
+                )
+            }
+            Error::UnboundConstructor(span) => {
+                let line = lexer.show_span(span);
+                format!(
+                    "{line}\n{RED}Error{END}: unbound constructor {}",
+                    lexer.str_from_span(span)
+                )
+            }
+            Error::WrongConstructorArgument(span, num_of_args) => {
+                let line = lexer.show_span(span);
+                format!("{line}\n{RED}Error{END}: constructor expects {num_of_args} argument")
+            }
             Error::CannotUnifyType(typ_a, typ_b) => {
                 format!("Cannot unify {} with {}", typ_a.borrow(), typ_b.borrow())
             }
@@ -661,6 +740,7 @@ mod test {
     use crate::{
         ast::{Ast, Expr},
         ast_builder::AstBuilder,
+        custom_types::CustomTypes,
         lexer::Lexer,
         parser::Parser,
         typ::{Error, TypeMap, TypeResolver},
@@ -751,16 +831,57 @@ mod test {
     }
 
     #[test]
+    fn constructor_with_arg() {
+        assert_type_of_last_bind("type t = Wrap of int | Empty let x = Wrap 1", "t");
+    }
+
+    #[test]
+    fn constructor_no_arg() {
+        assert_type_of_last_bind("type t = Wrap of int | Empty let x = Empty", "t");
+    }
+
+    #[test]
+    fn unit_let_in() {
+        assert_type_of_last_bind("let f g x = let () = g x in x", "(('a -> ()) -> 'a -> 'a)");
+    }
+
+    #[test]
     fn unbind_var() {
         let e = assert_error("let x = y");
 
-        if let Error::CannotInferExprType(_, e) = e {
-            match *e {
-                Error::UnboundVariable(_) => (),
-                _ => panic!("Incorrect error type"),
-            }
-        } else {
-            panic!("Expect error to wrapped");
+        match e {
+            Error::UnboundVariable(_) => (),
+            _ => panic!("Incorrect error type"),
+        }
+    }
+
+    #[test]
+    fn unbind_constructor() {
+        let e = assert_error("let x = Empty");
+
+        match e {
+            Error::UnboundConstructor(_) => (),
+            _ => panic!("Incorrect error type"),
+        }
+    }
+
+    #[test]
+    fn constructor_with_arg_no_arg_applied() {
+        let e = assert_error("type t = Wrap of int let x = Wrap");
+
+        match e {
+            Error::WrongConstructorArgument(_, 1) => (),
+            _ => panic!("Incorrect error type"),
+        }
+    }
+
+    #[test]
+    fn constructor_with_no_arg_arg_applied() {
+        let e = assert_error("type t = Empty let x = Empty 1");
+
+        match e {
+            Error::WrongConstructorArgument(_, 0) => (),
+            _ => panic!("Incorrect error type"),
         }
     }
 
@@ -832,30 +953,34 @@ mod test {
 
     fn assert_type_of_last_bind(src: &str, expect_type: &str) {
         let mut lexer = Lexer::from_source_str(src);
-        let ast = build_ast(&mut lexer).unwrap();
-        let type_map = resolve_types(&ast, &lexer).unwrap();
+        let (ast, custom_types) = build_ast(&mut lexer).unwrap();
+        let type_map = resolve_types(&ast, &custom_types, &lexer).unwrap();
         let type_str = get_last_bind_typ_str(&ast, &type_map);
         assert_eq!(expect_type, &type_str)
     }
 
     fn assert_error(src: &str) -> Error {
         let mut lexer = Lexer::from_source_str(src);
-        let ast = build_ast(&mut lexer).unwrap();
-        match resolve_types(&ast, &lexer) {
+        let (ast, custom_types) = build_ast(&mut lexer).unwrap();
+        match resolve_types(&ast, &custom_types, &lexer) {
             Result::Ok(_) => panic!("expect error"),
             Result::Err(e) => e,
         }
     }
 
-    fn build_ast(lexer: &mut Lexer) -> Result<Ast, String> {
+    fn build_ast(lexer: &mut Lexer) -> Result<(Ast, CustomTypes), String> {
         let mut parser = Parser::new();
         let cst_root = parser.parse(lexer)?;
-        let mut ast_builder = AstBuilder::new(lexer);
-        Ok(ast_builder.visit(&cst_root))
+        let ast_builder = AstBuilder::new(lexer);
+        Ok(ast_builder.build(&cst_root))
     }
 
-    fn resolve_types(ast: &Ast, lexer: &Lexer) -> Result<TypeMap, Error> {
-        let type_resolver = TypeResolver::new(lexer);
+    fn resolve_types(
+        ast: &Ast,
+        custom_types: &CustomTypes,
+        lexer: &Lexer,
+    ) -> Result<TypeMap, Error> {
+        let type_resolver = TypeResolver::new(custom_types, lexer);
         type_resolver.resolve_types(ast)
     }
 

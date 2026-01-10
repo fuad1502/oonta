@@ -2,10 +2,16 @@ mod ast_printer;
 
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{ast::ast_printer::AstPrinter, lexer::Lexer, symbol::Span};
+use crate::{ast::ast_printer::AstPrinter, custom_types::Variant, lexer::Lexer, symbol::Span};
 
+#[derive(Default)]
 pub struct Ast {
     pub binds: Vec<Bind>,
+}
+
+pub enum Stmt {
+    Bind(Bind),
+    TypeDecl(Variant),
 }
 
 pub struct Bind {
@@ -15,6 +21,7 @@ pub struct Bind {
 
 pub enum Expr {
     Literal(LiteralExpr),
+    Construction(ConstructExpr),
     Var(VarExpr),
     Fun(FunExpr),
     Application(ApplicationExpr),
@@ -48,6 +55,12 @@ pub struct ApplicationExpr {
     pub span: Span,
 }
 
+pub struct ConstructExpr {
+    pub cons: Span,
+    pub arg: Option<Rc<RefCell<Expr>>>,
+    pub span: Span,
+}
+
 pub struct LetInExpr {
     pub bind: (Span, Rc<RefCell<Expr>>),
     pub expr: Rc<RefCell<Expr>>,
@@ -76,10 +89,10 @@ pub struct PatternMatchExpr {
 
 pub enum Pattern {
     Tuple(Vec<Pattern>),
+    Constructor(Span, Option<Box<Pattern>>),
     Identifier(Span),
     Literal(LiteralExpr),
     None,
-    // Variant Constructor
 }
 
 pub struct TupleExpr {
@@ -102,12 +115,14 @@ pub enum Operator {
 
 impl From<Bind> for Ast {
     fn from(bind: Bind) -> Self {
-        Self { binds: vec![bind] }
+        let mut ast = Self::default();
+        ast.insert_stmt(bind);
+        ast
     }
 }
 
 impl Ast {
-    pub fn append(&mut self, bind: Bind) {
+    pub fn insert_stmt(&mut self, bind: Bind) {
         self.binds.push(bind);
     }
 }
@@ -125,6 +140,7 @@ impl Expr {
             Expr::Conditional(CondExpr { span, .. }) => span,
             Expr::Tuple(TupleExpr { span, .. }) => span,
             Expr::PatternMatch(PatternMatchExpr { span, .. }) => span,
+            Expr::Construction(ConstructExpr { span, .. }) => span,
         }
     }
 
@@ -174,6 +190,7 @@ impl Pattern {
             Pattern::Identifier(_) => false,
             Pattern::Literal(_) => true,
             Pattern::None => false,
+            Pattern::Constructor(_, _) => true,
         }
     }
 
@@ -183,6 +200,8 @@ impl Pattern {
             Pattern::Identifier(_) => true,
             Pattern::Literal(_) => false,
             Pattern::None => false,
+            Pattern::Constructor(_, None) => false,
+            Pattern::Constructor(_, Some(arg)) => arg.has_identifier(),
         }
     }
 }

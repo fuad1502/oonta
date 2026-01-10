@@ -612,7 +612,7 @@ impl IRType {
 impl From<&Type> for IRType {
     fn from(typ: &Type) -> Self {
         match typ {
-            Type::Fun(_) | Type::Tuple(_) => IRType::Ptr,
+            Type::Fun(_) | Type::Tuple(_) | Type::Custom(_) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
             Type::Primitive(Primitive::Bool) => IRType::I1,
             Type::Primitive(Primitive::Unit) => IRType::Void,

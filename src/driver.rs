@@ -10,6 +10,7 @@ use crate::{
     application_visitor::transform_applications,
     ast::{Ast, Expr},
     ast_builder::AstBuilder,
+    custom_types::CustomTypes,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
     parser::Parser,
@@ -68,14 +69,14 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Build AST");
-        let ast = build_ast(&lexer, &cst_root);
+        let (ast, custom_types) = build_ast(&lexer, &cst_root);
         if self.debug_phases {
             ast.pretty_print(&lexer);
         }
         self.dbg_end();
 
         self.dbg_start("Resolve types");
-        let mut type_map = match resolve_types(&lexer, &ast) {
+        let mut type_map = match resolve_types(&lexer, &ast, &custom_types) {
             Ok(type_map) => type_map,
             Err(e) => return Err(e.report(&lexer)),
         };
@@ -89,7 +90,7 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Build LLVM module");
-        let module = build_module(&ast, &type_map, &lexer, self.top_level);
+        let module = build_module(&ast, &type_map, &custom_types, &lexer, self.top_level);
         self.dbg_end();
 
         self.dbg_start("Write LLVM module");
@@ -133,13 +134,17 @@ fn parse(lexer: &mut Lexer) -> Result<Symbol, String> {
     parser.parse(lexer)
 }
 
-fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> Ast {
-    let mut ast_builder = AstBuilder::new(lexer);
-    ast_builder.visit(cst_root)
+fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> (Ast, CustomTypes) {
+    let ast_builder = AstBuilder::new(lexer);
+    ast_builder.build(cst_root)
 }
 
-fn resolve_types(lexer: &Lexer, ast: &Ast) -> Result<TypeMap, typ::Error> {
-    let type_resolver = TypeResolver::new(lexer);
+fn resolve_types(
+    lexer: &Lexer,
+    ast: &Ast,
+    custom_types: &CustomTypes,
+) -> Result<TypeMap, typ::Error> {
+    let type_resolver = TypeResolver::new(custom_types, lexer);
     type_resolver.resolve_types(ast)
 }
 
@@ -156,8 +161,14 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
     }
 }
 
-fn build_module(ast: &Ast, type_map: &TypeMap, lexer: &Lexer, is_top_level: bool) -> Module {
-    let ir_builder = IRBuilder::new(type_map, lexer, is_top_level);
+fn build_module(
+    ast: &Ast,
+    type_map: &TypeMap,
+    custom_types: &CustomTypes,
+    lexer: &Lexer,
+    is_top_level: bool,
+) -> Module {
+    let ir_builder = IRBuilder::new(type_map, custom_types, lexer, is_top_level);
     ir_builder.build(ast)
 }
 
@@ -213,11 +224,40 @@ mod test {
     use crate::driver::{CompileOptions, compile};
 
     #[test]
-    fn ll() {
+    fn ll_arithmetic() {
+        ll("arithmetic");
+    }
+
+    #[test]
+    fn obj_arithmetic() {
+        obj("arithmetic");
+    }
+
+    #[test]
+    fn exec_arithmetic() {
+        exec("arithmetic", "9\n120\n");
+    }
+
+    #[test]
+    fn ll_merge_sort() {
+        ll("merge_sort");
+    }
+
+    #[test]
+    fn obj_merge_sort() {
+        obj("merge_sort");
+    }
+
+    #[test]
+    fn exec_merge_sort() {
+        exec("merge_sort", "1\n2\n3\n4\n5\n");
+    }
+
+    fn ll(test_name: &str) {
         let options = vec![];
-        let out_path = out_path("ll");
+        let out_path = out_path(test_name, "ll");
         clear_output_files(&out_path);
-        compile(&src_path(), &out_path, &options).unwrap();
+        compile(&src_path(test_name), &out_path, &options).unwrap();
 
         assert!(std::fs::exists(&out_path).unwrap());
         assert!(!std::fs::exists(out_path.with_extension("o")).unwrap());
@@ -225,12 +265,11 @@ mod test {
         clear_output_files(&out_path);
     }
 
-    #[test]
-    fn obj() {
+    fn obj(test_name: &str) {
         let options = vec![CompileOptions::CreateObjFile];
-        let out_path = out_path("obj");
+        let out_path = out_path(test_name, "obj");
         clear_output_files(&out_path);
-        compile(&src_path(), &out_path, &options).unwrap();
+        compile(&src_path(test_name), &out_path, &options).unwrap();
 
         assert!(std::fs::exists(&out_path).unwrap());
         assert!(std::fs::exists(out_path.with_extension("o")).unwrap());
@@ -238,12 +277,11 @@ mod test {
         clear_output_files(&out_path);
     }
 
-    #[test]
-    fn exec() {
+    fn exec(test_name: &str, stdout_expect: &str) {
         let options = vec![CompileOptions::CreateExecutable];
-        let out_path = out_path("exec");
+        let out_path = out_path(test_name, "exec");
         clear_output_files(&out_path);
-        compile(&src_path(), &out_path, &options).unwrap();
+        compile(&src_path(test_name), &out_path, &options).unwrap();
 
         assert!(std::fs::exists(&out_path).unwrap());
         assert!(std::fs::exists(out_path.with_extension("o")).unwrap());
@@ -252,20 +290,20 @@ mod test {
         let mut cmd = Command::new(out_path.with_extension("out"));
         let output = cmd.output().unwrap();
         let stdout = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(stdout, "9\n120\n3\n");
+        assert_eq!(stdout, stdout_expect);
         clear_output_files(&out_path);
     }
 
-    fn src_path() -> PathBuf {
+    fn src_path(test_name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("ocaml")
-            .join("test.ml")
+            .join(format!("{test_name}.ml"))
     }
 
-    fn out_path(postfix: &str) -> PathBuf {
+    fn out_path(test_name: &str, postfix: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("ocaml")
-            .join(format!("test-{postfix}.ll"))
+            .join(format!("test-{test_name}-{postfix}.ll"))
     }
 
     fn clear_output_files(out_path: &Path) {
