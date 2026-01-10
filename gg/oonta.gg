@@ -37,7 +37,7 @@ VarBind = Let Identifier Eq Expr;
 FunBind = Let Identifier ParamList Eq Expr;
 RecFunBind = Let Rec Identifier ParamList Eq Expr;
 UnitBind = Let Unit Eq Expr;
-TypeDecl = Type Identifier Eq ConstructorList;
+TypeDecl = Type Identifier Eq ConstructorList | Type Identifier Eq Pipe ConstructorList;
 
 ParamList = ParamList Param | Param;
 Param = Identifier;
