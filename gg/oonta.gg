@@ -26,8 +26,8 @@ LeftParen("\(")
 RightParen("\)")
 Comma(",")
 Number("\d\d*")
-Identifier("(\w|_)(\w|\W|_)*")
-ConstructorIdentifier("\W(\w|\W|_)*")
+Identifier("(\w|_)(\w|\W|\d|_)*")
+ConstructorIdentifier("\W(\w|\W|\d|_)*")
 
 %RULES
 StmtList = StmtList Stmt | Stmt;
@@ -74,7 +74,7 @@ LetIn = Let Identifier Eq Expr In Expr | Let Unit Eq Expr In Expr;
 
 PatternMatch = Match Expr With Branches | Match Expr With Pipe Branches;
 Branches = Branches Pipe Branch | Branch;
-Branch = Pattern Arrow Expr;
+Branch = Pattern Arrow Expr | Patterns Arrow Expr;
 Pattern =
     LeftParen Patterns RightParen |
     ConstructorIdentifier Pattern |
