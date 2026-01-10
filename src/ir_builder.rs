@@ -623,7 +623,7 @@ impl<'a> IRBuilder<'a> {
 
     fn populate_builtins(mut self) -> Self {
         let fmt_str_name = "fmt".to_string();
-        let init = IRValue::Pri(IRPri::Str("%d"));
+        let init = IRValue::Pri(IRPri::Str("%lld"));
         self.module.new_global_constant(fmt_str_name.clone(), init);
         let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
         self.insert_print_int_builtin(fmt_str_ptr.clone())
@@ -642,7 +642,7 @@ impl<'a> IRBuilder<'a> {
         // 2. Define print_int function
         let anon_fun_name = self.new_anon_fun_name();
         let ret_typ = IRType::Void;
-        let params = vec![(String::new(), IRType::I32)];
+        let params = vec![(String::new(), IRType::I64)];
         let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
         let printf_fun_ptr = IRValue::Global(printf_fun_name, IRType::Ptr);
         let printf_args = vec![fmt_str_ptr, fun.param(0)];
