@@ -213,6 +213,7 @@ impl<'a> IRBuilder<'a> {
             .binds
             .iter()
             .map(|e| self.visit_expr(&e.borrow()))
+            .filter(|val| !val.is_void())
             .collect::<Vec<IRValue>>();
         let closure = self.visit_expr(&application_expr.fun.borrow());
         args.push(closure.clone());
@@ -621,14 +622,16 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn populate_builtins(mut self) -> Self {
-        // 1. Insert format strings
         let fmt_str_name = "fmt".to_string();
-        let typ = IRType::Array(Box::new(IRType::I8), 4);
-        let init = IRValue::Pri(IRPri::Str("%d\n"));
-        self.module
-            .new_global_constant(fmt_str_name.clone(), typ, Some(init));
+        let init = IRValue::Pri(IRPri::Str("%d"));
+        self.module.new_global_constant(fmt_str_name.clone(), init);
+        let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
+        self.insert_print_int_builtin(fmt_str_ptr.clone())
+            .insert_read_int_builtin(fmt_str_ptr)
+    }
 
-        // 2. Insert printf declaration
+    fn insert_print_int_builtin(mut self, fmt_str_ptr: IRValue) -> Self {
+        // 1. Insert printf declaration
         let printf_fun_name = "printf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
@@ -636,31 +639,67 @@ impl<'a> IRBuilder<'a> {
         self.module
             .new_function_decl(printf_fun_name.clone(), signature);
 
-        // 3. Define print_int function
+        // 2. Define print_int function
         let anon_fun_name = self.new_anon_fun_name();
         let ret_typ = IRType::Void;
         let params = vec![(String::new(), IRType::I32)];
         let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
         let printf_fun_ptr = IRValue::Global(printf_fun_name, IRType::Ptr);
-        let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
         let printf_args = vec![fmt_str_ptr, fun.param(0)];
         fun.call(printf_fun_ptr, IRType::I32, printf_args);
         fun.ret(IRValue::Void);
         self.module.new_function(anon_fun_name.clone(), fun);
 
-        // 4. Insert closure
+        // 3. Insert closure
         let closure_name = "_print_int".to_string();
-        let typ = IRType::Ptr;
         let init = IRValue::Global(anon_fun_name, IRType::Ptr);
-        self.module
-            .new_global_constant(closure_name.clone(), typ, Some(init));
+        self.module.new_global_constant(closure_name.clone(), init);
 
-        // 5. Insert global var
+        // 4. Insert global var
         let print_int_name = "print_int".to_string();
-        let typ = IRType::Ptr;
         let init = IRValue::Global(closure_name, IRType::Ptr);
         self.module
-            .new_global_constant(print_int_name.clone(), typ, Some(init));
+            .new_global_constant(print_int_name.clone(), init);
+        self.insert_name_to_ctx(
+            print_int_name.clone(),
+            IRValue::Global(print_int_name, IRType::Ptr),
+        );
+
+        self
+    }
+
+    fn insert_read_int_builtin(mut self, fmt_str_ptr: IRValue) -> Self {
+        // 1. Insert scanf declaration
+        let scanf_fun_name = "scanf".to_string();
+        let ret_typ = IRType::I32;
+        let params = vec![IRType::Ptr];
+        let signature = FunSignature::new(scanf_fun_name.clone(), ret_typ, params, true);
+        self.module
+            .new_function_decl(scanf_fun_name.clone(), signature);
+
+        // 2. Define read_int function
+        let anon_fun_name = self.new_anon_fun_name();
+        let ret_typ = IRType::I64;
+        let params = vec![];
+        let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
+        let scanf_fun_ptr = IRValue::Global(scanf_fun_name, IRType::Ptr);
+        let res_ptr = fun.alloca(IRType::I64);
+        let scanf_args = vec![fmt_str_ptr, res_ptr.clone()];
+        fun.call(scanf_fun_ptr, IRType::I32, scanf_args);
+        let res = fun.load(IRType::I64, res_ptr);
+        fun.ret(res);
+        self.module.new_function(anon_fun_name.clone(), fun);
+
+        // 3. Insert closure
+        let closure_name = "_read_int".to_string();
+        let init = IRValue::Global(anon_fun_name, IRType::Ptr);
+        self.module.new_global_constant(closure_name.clone(), init);
+
+        // 4. Insert global var
+        let print_int_name = "read_int".to_string();
+        let init = IRValue::Global(closure_name, IRType::Ptr);
+        self.module
+            .new_global_constant(print_int_name.clone(), init);
         self.insert_name_to_ctx(
             print_int_name.clone(),
             IRValue::Global(print_int_name, IRType::Ptr),

@@ -479,6 +479,15 @@ impl<'a> TypeResolver<'a> {
         self.main_context
             .borrow_mut()
             .insert("print_int", Rc::new(RefCell::new(typ)));
+
+        let typ = Type::Fun(vec![
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Unit))),
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))),
+        ]);
+        self.main_context
+            .borrow_mut()
+            .insert("read_int", Rc::new(RefCell::new(typ)));
+
         self
     }
 }

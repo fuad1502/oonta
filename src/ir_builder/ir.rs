@@ -111,11 +111,12 @@ impl Module {
         self.global_vars.push(global);
     }
 
-    pub fn new_global_constant(&mut self, name: String, ir_typ: IRType, init: Option<IRValue>) {
+    pub fn new_global_constant(&mut self, name: String, init: IRValue) {
+        let ir_typ = init.typ();
         let global = GlobalVar {
             name,
             ir_typ,
-            init,
+            init: Some(init),
             constant: true,
         };
         self.global_constants.push(global);
@@ -566,6 +567,10 @@ impl IRValue {
         }
     }
 
+    pub fn is_void(&self) -> bool {
+        matches!(self, IRValue::Void)
+    }
+
     fn reg_name(&self) -> Option<&String> {
         if let IRValue::Reg(name, _) = self {
             Some(name)
@@ -585,10 +590,6 @@ impl IRValue {
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
             IRValue::Void => "void".to_string(),
         }
-    }
-
-    fn is_void(&self) -> bool {
-        matches!(self, IRValue::Void)
     }
 }
 

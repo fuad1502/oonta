@@ -235,7 +235,7 @@ mod test {
 
     #[test]
     fn exec_arithmetic() {
-        exec("arithmetic", "9\n120\n");
+        exec("arithmetic", "9120");
     }
 
     #[test]
@@ -250,7 +250,7 @@ mod test {
 
     #[test]
     fn exec_merge_sort() {
-        exec("merge_sort", "1\n2\n3\n4\n5\n");
+        exec("merge_sort", "12345");
     }
 
     fn ll(test_name: &str) {
