@@ -259,7 +259,7 @@ impl Function {
             .iter()
             .map(|i| IRValue::Pri(IRPri::I32(*i)))
             .collect();
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let instr = Instr {
             class: InstrClass::GetElemPtr(typ, src, indexes),
             res: IRValue::Reg(res_name, IRType::Ptr),
@@ -273,7 +273,7 @@ impl Function {
         if typ.is_void() {
             return IRValue::Void;
         }
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let instr = Instr {
             class: InstrClass::Load(typ.clone(), src),
             res: IRValue::Reg(res_name, typ),
@@ -306,7 +306,7 @@ impl Function {
         let res = if typ.is_void() {
             IRValue::Void
         } else {
-            let res_name = self.new_name("");
+            let res_name = self.new_name("r");
             IRValue::Reg(res_name, typ.clone())
         };
         let instr = Instr {
@@ -322,7 +322,7 @@ impl Function {
         if typ.is_void() {
             return IRValue::Void;
         }
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let instr = Instr {
             class: InstrClass::Alloca(typ),
             res: IRValue::Reg(res_name, IRType::Ptr),
@@ -354,7 +354,7 @@ impl Function {
         rhs: IRValue,
         operator: Operator,
     ) -> IRValue {
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let op_typ = lhs.typ().clone();
         let class = match operator {
             Operator::Plus => InstrClass::Add(op_typ, lhs, rhs),
@@ -376,7 +376,7 @@ impl Function {
     }
 
     pub fn and(&mut self, lhs: IRValue, rhs: IRValue) -> IRValue {
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let typ = lhs.typ();
         let instr = Instr {
             class: InstrClass::And(typ.clone(), lhs, rhs),

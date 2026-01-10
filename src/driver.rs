@@ -97,6 +97,10 @@ impl Driver {
         write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
         self.dbg_end();
 
+        self.dbg_start("Optimize LLVM IR");
+        optimize_llvm_ir(out_path)?;
+        self.dbg_end();
+
         if self.create_obj_file {
             self.dbg_start("LLVM backend");
             let obj_file = create_obj_file(out_path)?;
@@ -178,10 +182,24 @@ fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
     module.serialize(Box::new(wr))
 }
 
+fn optimize_llvm_ir(path: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("opt");
+    cmd.args([
+        "-S",
+        "-O3",
+        "-o",
+        path.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(())
+}
+
 fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
     let mut cmd = Command::new("llc");
     let obj_file = path.with_extension("o");
     cmd.args([
+        "-O3",
         "-relocation-model=pic",
         "--filetype=obj",
         "-o",
