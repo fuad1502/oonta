@@ -23,10 +23,10 @@ def generate_output_ref_file(numbers):
             file.write(f"{num}")
 
 def generate_oonta_benchmark_binary(benchmark_src):
-    subprocess.run(["cargo", "run", "--", f"benchmark/{benchmark_src}", "-o", "benchmark/benchmark.ll", "--exec"]) 
+    subprocess.run(["cargo", "run", "--", f"benchmark/{benchmark_src}", "-o", "benchmark/benchmark.ll", "--exec"], capture_output=True) 
 
 def generate_ocamlopt_benchmark_binary(benchmark_src):
-    subprocess.run(["ocamlopt", f"benchmark/{benchmark_src}", "-o", "benchmark/ocamlopt.out"]) 
+    subprocess.run(["ocamlopt", "-O3", f"benchmark/{benchmark_src}", "-o", "benchmark/ocamlopt.out"]) 
 
 def benchmark(binary):
     with open("benchmark/input.txt", "r") as infile:
