@@ -22,11 +22,11 @@ def generate_output_ref_file(numbers):
         for num in numbers:
             file.write(f"{num}")
 
-def generate_oonta_benchmark_binary():
-    subprocess.run(["cargo", "run", "--", "benchmark/benchmark.ml", "--exec"]) 
+def generate_oonta_benchmark_binary(benchmark_src):
+    subprocess.run(["cargo", "run", "--", f"benchmark/{benchmark_src}", "-o", "benchmark/benchmark.ll", "--exec"]) 
 
-def generate_ocamlopt_benchmark_binary():
-    subprocess.run(["ocamlopt", "benchmark/benchmark.ml", "-o", "benchmark/ocamlopt.out"]) 
+def generate_ocamlopt_benchmark_binary(benchmark_src):
+    subprocess.run(["ocamlopt", f"benchmark/{benchmark_src}", "-o", "benchmark/ocamlopt.out"]) 
 
 def benchmark(binary):
     with open("benchmark/input.txt", "r") as infile:
@@ -41,17 +41,28 @@ def benchmark(binary):
             if reffile.readline() != outfile.readline():
                 print(f"{binary} output is incorrect!")
 
-
 def main():
-    if len(sys.argv) != 2:
-        print("Usage : python3 benchmark/benchmark.py <num of list elements to sort>")
-        print("Tips  : run in the repository root directory")
+    if len(sys.argv) != 3:
+        print("Usage      : python3 benchmark/benchmark.py <num of list elements to sort> <benchmark idx>")
+        print("Benchmarks :\n\t0. Merge sort\n\t1. Insertion sort")
+        print("Tips       : run in the repository root directory")
         sys.exit(1)
+
     numbers = generate_random_numbers(int(sys.argv[1]))
+    benchmark_idx = int(sys.argv[2])
+    if benchmark_idx == 0:
+        benchmark_src = "merge_sort.ml"
+    elif benchmark_idx == 1:
+        benchmark_src = "insertion_sort.ml"
+    else:
+        print(f"Invalid benchmark idx ({benchmark_idx})")
+        sys.exit(1)
+    print(f"Benchmarking: {benchmark_src}")
+
     generate_input_file(numbers)
     generate_output_ref_file(numbers)
-    generate_oonta_benchmark_binary()
-    generate_ocamlopt_benchmark_binary()
+    generate_oonta_benchmark_binary(benchmark_src)
+    generate_ocamlopt_benchmark_binary(benchmark_src)
     benchmark("./benchmark/benchmark.out")
     benchmark("./benchmark/ocamlopt.out")
 
