@@ -227,7 +227,7 @@ impl<'a> IRBuilder<'a> {
             self.curr_fun().load(IRType::Ptr, closure)
         };
         let res_typ = self.get_ir_typ(expr_ptr);
-        self.curr_fun().call(fun, res_typ, args)
+        self.curr_fun().fast_call(fun, res_typ, args)
     }
 
     fn visit_partial_application_expr(
@@ -323,7 +323,7 @@ impl<'a> IRBuilder<'a> {
         // > call fun with args
         let fun = self.curr_fun().load(IRType::Ptr, closure);
         let res_typ = IRType::from(&dispatch_ret_typ);
-        let res = self.curr_fun().call(fun, res_typ, args);
+        let res = self.curr_fun().fast_call(fun, res_typ, args);
         self.curr_fun().ret(res);
 
         self.pop_ctx();
@@ -652,7 +652,7 @@ impl<'a> IRBuilder<'a> {
         let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
         let printf_fun_ptr = IRValue::Global(printf_fun_name, IRType::Ptr);
         let printf_args = vec![fmt_str_ptr, fun.param(0)];
-        fun.call(printf_fun_ptr, IRType::I32, printf_args);
+        fun.normal_call(printf_fun_ptr, IRType::I32, printf_args);
         fun.ret(IRValue::Void);
         self.module.new_function(anon_fun_name.clone(), fun);
 
@@ -691,7 +691,7 @@ impl<'a> IRBuilder<'a> {
         let scanf_fun_ptr = IRValue::Global(scanf_fun_name, IRType::Ptr);
         let res_ptr = fun.alloca(IRType::I64);
         let scanf_args = vec![fmt_str_ptr, res_ptr.clone()];
-        fun.call(scanf_fun_ptr, IRType::I32, scanf_args);
+        fun.normal_call(scanf_fun_ptr, IRType::I32, scanf_args);
         let res = fun.load(IRType::I64, res_ptr);
         fun.ret(res);
         self.module.new_function(anon_fun_name.clone(), fun);
@@ -802,7 +802,7 @@ impl<'a> IRBuilder<'a> {
             }
         };
         let fun_ptr = IRValue::Global("malloc".to_string(), IRType::Ptr);
-        self.curr_fun().call(fun_ptr, ret_typ, vec![sz])
+        self.curr_fun().normal_call(fun_ptr, ret_typ, vec![sz])
     }
 }
 

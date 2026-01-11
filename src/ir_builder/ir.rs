@@ -76,7 +76,7 @@ pub enum InstrClass {
     Gt(IRType, IRValue, IRValue),
     And(IRType, IRValue, IRValue),
     Store(IRValue, IRValue),
-    Call(IRValue, IRType, Vec<IRValue>),
+    Call(IRValue, IRType, Vec<IRValue>, bool),
     Alloca(IRType),
     CondBrk(IRValue, String, String),
     Brk(String),
@@ -302,7 +302,15 @@ impl Function {
         self.push_instr(instr);
     }
 
-    pub fn call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
+    pub fn fast_call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
+        self.call(fun, typ, args, true)
+    }
+
+    pub fn normal_call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
+        self.call(fun, typ, args, false)
+    }
+
+    fn call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>, fast: bool) -> IRValue {
         let res = if typ.is_void() {
             IRValue::Void
         } else {
@@ -310,7 +318,7 @@ impl Function {
             IRValue::Reg(res_name, typ.clone())
         };
         let instr = Instr {
-            class: InstrClass::Call(fun, typ, args),
+            class: InstrClass::Call(fun, typ, args, fast),
             res,
         };
         self.push_instr(instr.clone());
@@ -411,7 +419,7 @@ impl std::fmt::Display for Function {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         let typ = &self.ret_typ;
         let name = &self.name;
-        write!(fmt, "define {typ} @{name}(")?;
+        write!(fmt, "define ghccc {typ} @{name}(")?;
         write_comma_separated(&self.params, fmt)?;
         writeln!(fmt, ") {{")?;
         self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
@@ -532,8 +540,9 @@ impl std::fmt::Display for InstrClass {
                 write!(fmt, "and {irtype} {}, {}", lhs.name(), rhs.name())
             }
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
-            InstrClass::Call(fun_ptr, ret_typ, args) => {
-                write!(fmt, "call {ret_typ} {}(", fun_ptr.name())?;
+            InstrClass::Call(fun_ptr, ret_typ, args, fast) => {
+                let cc = if *fast { "ghccc" } else { "" };
+                write!(fmt, "call {cc} {ret_typ} {}(", fun_ptr.name())?;
                 write_comma_separated(args, fmt)?;
                 write!(fmt, ")")
             }
