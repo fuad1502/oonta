@@ -195,8 +195,10 @@ sudo apt install llvm
 
 Additionally, with `--exec`, you need the *Oonta runtime library*:
 `liboonta_runtime.a`. If you're running an x64 linux machine, you can obtain
-the static library from the [release page]. If not, you would need to build the
-runtime from source by following the guide [below](#building-from-source).
+the static library from the [release
+page](https://github.com/fuad1502/oonta/releases). If not, you would need to
+build the runtime from source by following the guide
+[below](#building-from-source).
 
 > [!NOTE]
 > Currently the runtime only provides allocation requests using *bump
