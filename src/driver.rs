@@ -324,7 +324,7 @@ mod test {
     }
 
     fn exec(test_name: &str, stdout_expect: &str) {
-        let options = vec![CompileOptions::CreateExecutable];
+        let options = vec![CompileOptions::CreateExecutable, CompileOptions::OptimizeIR];
         let out_path = out_path(test_name, "exec");
         clear_output_files(&out_path);
         compile(&src_path(test_name), &out_path, &options).unwrap();
