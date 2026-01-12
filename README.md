@@ -307,39 +307,38 @@ Error: cannot bind expression of type int to ()
 
 ## Building from source
 
-1. Install `cargo` tool:
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-2. Clone repository.
-
-```sh
-git clone https://github.com/fuad1502/oonta.git
-```
-3. Build `oonta` crate.
-
-```sh
-cd compiler_toys/oonta
-cargo build
-cargo test
-```
-4. Install C++ build dependencies
+1. Install C++ build dependencies
 
 ```
 sudo apt install build-essential cmake
 ```
+2. Install `cargo` tool:
 
-5. Build & install `liboonta_runtime.a`
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+3. Clone repository.
+
+```sh
+git clone https://github.com/fuad1502/oonta.git
+```
+4. Build `liboonta_runtime.a`
 
 ```
 cmake -S runtime -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-sudo cmake --install build
+```
+5. Install `liboonta_runtime.a`
 
 ```
+sudo cmake --install build
+```
+6. Build `oonta`.
 
+```sh
+cargo build
+cargo test
+```
 ## Why is it called Oonta?
 
 *Oonta*, is based on the Indonesian word *unta*, which translates to "camel".
