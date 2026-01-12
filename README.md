@@ -8,7 +8,8 @@ language](https://ocaml.org): it generates [LLVM intermediate representation
 
 *Oonta* uses the [JJIK](https://github.com/fuad1502/jjik) parser generator and
 [JLEK](https://github.com/fuad1502/jlek) lexer generator to perform the parsing
-and lexing stages.
+and lexing stages. For building the IR, *Oonta* does not depend on the LLVM
+API.
 
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
@@ -26,16 +27,12 @@ and lexing stages.
 ```sh
 cargo install oonta
 cat << EOF > main.ml
-let square x = x * x
-let a = square 3
-let () = print_int a
 let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
-let b = factorial 5
-let () = print_int b
+let a = factorial 5
+let () = print_int a
 EOF
 oonta --exec main.ml
 ./main.out
-# 9
 # 120
 ```
 ## Benchmark
