@@ -10,7 +10,6 @@ add_library(oonta_runtime STATIC
 	src/gc.cpp
 )
 
-include(CPack)
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME "liboonta_runtime")
 set(CPACK_PACKAGE_VERSION ${CMAKE_PROJECT_VERSION})
@@ -19,5 +18,6 @@ set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Oonta runtime library")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/fuad1502/oonta")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+include(CPack)
 
 install(TARGETS oonta_runtime)
