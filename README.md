@@ -203,13 +203,15 @@ the excess time is used by system calls.
 
 The `oonta` binary does not have any runtime dependencies other than the
 standard library. However, for convenience, the `oonta` command provides the
-`--compile / -c` and `--exec / -e` options to compile the generated IR to an
-object code and executable, respectively. Internally, `oonta` will invoke the
-following commands:
+`--opt, -O`, `--compile / -c` and `--exec / -e` options to optimize the
+generated IR, compile the generated IR to an object code and executable,
+respectively. Internally, `oonta` will invoke the following commands:
 
 ```sh
+# with --opt
+opt -S -O3 -o <.ll file> <.ll file>
 # with --compile
-llc -relocation-model=pic --filetype=obj -o <output> <.ll file>
+llc -O3 -relocation-model=pic --filetype=obj -o <output> <.ll file>
 # with --exec
 clang -o <output> <.o file>
 ```
