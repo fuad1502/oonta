@@ -641,7 +641,9 @@ impl<'a> IRBuilder<'a> {
         let printf_fun_name = "printf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
-        let signature = FunSignature::new(printf_fun_name.clone(), ret_typ, params, true);
+        let signature = FunSignature::new(printf_fun_name.clone(), ret_typ, params)
+            .varargs()
+            .ccc();
         self.module
             .new_function_decl(printf_fun_name.clone(), signature);
 
@@ -679,7 +681,9 @@ impl<'a> IRBuilder<'a> {
         let scanf_fun_name = "scanf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
-        let signature = FunSignature::new(scanf_fun_name.clone(), ret_typ, params, true);
+        let signature = FunSignature::new(scanf_fun_name.clone(), ret_typ, params)
+            .varargs()
+            .ccc();
         self.module
             .new_function_decl(scanf_fun_name.clone(), signature);
 
@@ -796,7 +800,9 @@ impl<'a> IRBuilder<'a> {
                 let name = "gcmalloc".to_string();
                 let ret_typ = IRType::Ptr;
                 let params = vec![IRType::I64];
-                let signature = FunSignature::new(name.clone(), ret_typ.clone(), params, false);
+                let signature = FunSignature::new(name.clone(), ret_typ.clone(), params)
+                    .alloc()
+                    .ccc();
                 self.module.new_function_decl(name, signature);
                 ret_typ
             }
