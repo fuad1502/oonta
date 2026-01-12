@@ -23,7 +23,7 @@ def generate_output_ref_file(numbers):
             file.write(f"{num}")
 
 def generate_oonta_benchmark_binary(benchmark_src):
-    subprocess.run(["cargo", "run", "--", f"benchmark/{benchmark_src}", "-o", "benchmark/benchmark.ll", "--exec"], capture_output=True) 
+    subprocess.run(["cargo", "run", "--", f"benchmark/{benchmark_src}", "-o", "benchmark/oonta.ll", "--exec"], capture_output=True) 
 
 def generate_ocamlopt_benchmark_binary(benchmark_src):
     subprocess.run(["ocamlopt", "-O3", f"benchmark/{benchmark_src}", "-o", "benchmark/ocamlopt.out"]) 
@@ -40,6 +40,7 @@ def benchmark(binary):
         with open("benchmark/output.txt", "r") as outfile:
             if reffile.readline() != outfile.readline():
                 print(f"{binary} output is incorrect!")
+    return elapsed_time
 
 def main():
     if len(sys.argv) != 3:
@@ -61,10 +62,14 @@ def main():
 
     generate_input_file(numbers)
     generate_output_ref_file(numbers)
-    generate_oonta_benchmark_binary(benchmark_src)
     generate_ocamlopt_benchmark_binary(benchmark_src)
-    benchmark("./benchmark/benchmark.out")
-    benchmark("./benchmark/ocamlopt.out")
+    generate_oonta_benchmark_binary(benchmark_src)
+    ref_time = benchmark("./benchmark/ocamlopt.out")
+    time = benchmark("./benchmark/oonta.out")
+    if time > ref_time:
+        print(f"> {time/ref_time:.2f} times slower")
+    else:
+        print(f"> {ref_time/time:.2f} times faster")
 
 if __name__ == "__main__":
     main()
