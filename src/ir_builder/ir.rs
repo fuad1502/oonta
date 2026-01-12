@@ -419,7 +419,8 @@ impl std::fmt::Display for Function {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         let typ = &self.ret_typ;
         let name = &self.name;
-        write!(fmt, "define ghccc {typ} @{name}(")?;
+        // TODO: use other calling convention for fast call
+        write!(fmt, "define ccc {typ} @{name}(")?;
         write_comma_separated(&self.params, fmt)?;
         writeln!(fmt, ") {{")?;
         self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
@@ -541,7 +542,8 @@ impl std::fmt::Display for InstrClass {
             }
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
             InstrClass::Call(fun_ptr, ret_typ, args, fast) => {
-                let cc = if *fast { "ghccc" } else { "" };
+                // TODO: use other calling convention for fast call
+                let cc = if *fast { "ccc" } else { "" };
                 write!(fmt, "call {cc} {ret_typ} {}(", fun_ptr.name())?;
                 write_comma_separated(args, fmt)?;
                 write!(fmt, ")")
