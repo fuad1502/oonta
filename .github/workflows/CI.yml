@@ -34,7 +34,7 @@ jobs:
           -iname '*.c' \
           | xargs clang-format --dry-run --Werror --verbose
       - name: Install liboonta_runtime.a
-        run: cmake --install build
+        run: sudo cmake --install build
       - uses: dtolnay/rust-toolchain@stable
       - name: Install LLVM
         run: sudo apt update && sudo apt install -y llvm
