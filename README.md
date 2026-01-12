@@ -155,49 +155,15 @@ benchmarks are as follows:
 
 ```text
 Benchmarking: merge_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.8648 seconds
-Elapsed time (./benchmark/oonta.out): 1.5996 seconds
-> 1.85 times slower
+Elapsed time (./benchmark/ocamlopt.out): 0.8710 seconds
+Elapsed time (./benchmark/oonta.out): 0.7323 seconds
+> 1.19 times faster
 
 Benchmarking: insertion_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.1317 seconds
-Elapsed time (./benchmark/oonta.out): 0.8740 seconds
-> 6.64 times slower
+Elapsed time (./benchmark/ocamlopt.out): 0.1323 seconds
+Elapsed time (./benchmark/oonta.out): 0.3363 seconds
+> 2.54 times slower
 ```
-One probable reason for the slow down is because (currently) it constantly
-request for memory allocations through `malloc` calls for each tuple and
-variant construction expression. Additionally, since there is no garbage
-collector, the memory usage will be very high and it would not use the cache
-very effectively.
-
-By running `time` on `oonta.out` and `ocamlopt.out`, we could see that most of
-the excess time is used by system calls.
-
-```text
-# /usr/bin/time -v benchmark/oonta.out < benchmark/input.txt > benchmark/output.txt   
-        Command being timed: "benchmark/oonta.out"
-        User time (seconds): 0.92
-        System time (seconds): 0.65
-        Percent of CPU this job got: 100%
-        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.58
-        ...
-        Maximum resident set size (kbytes): 2603072
-        ...
-        Minor (reclaiming a frame) page faults: 650487
-        ...
-# /usr/bin/time -v benchmark/ocamlopt.out < benchmark/input.txt > benchmark/output.txt
-        Command being timed: "benchmark/ocamlopt.out"
-        User time (seconds): 0.77
-        System time (seconds): 0.08
-        Percent of CPU this job got: 99%
-        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.85
-        ...
-        Maximum resident set size (kbytes): 257520
-        ...
-        Minor (reclaiming a frame) page faults: 67946
-        ...
-```
-
 ## Dependencies
 
 The `oonta` binary does not have any runtime dependencies other than the
