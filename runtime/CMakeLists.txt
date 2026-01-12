@@ -4,7 +4,7 @@ project(oonta_runtime)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 
-add_library(oonta_runtime SHARED
+add_library(oonta_runtime STATIC
 	src/runtime_extern.cpp
 	src/gc_extern.cpp
 	src/gc.cpp
