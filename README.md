@@ -14,8 +14,8 @@ API.
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
 > supported. For example, polymorphic functions and types, and modules are not
-> yet supported. Additionally, the garbage collector runtime is not yet
-> available. See the issues tab for the list of work items.
+> yet supported. Additionally, the runtime does not yet provide a garbage
+> collection service. See the issues tab for the list of work items.
 
 > [!NOTE]
 > This project is part of the ["Compiler
@@ -31,7 +31,7 @@ let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
 let a = factorial 5
 let () = print_int a
 EOF
-oonta --exec main.ml
+oonta --opt --exec main.ml
 ./main.out
 # 120
 ```
@@ -166,11 +166,10 @@ Elapsed time (./benchmark/oonta.out): 0.3363 seconds
 ```
 ## Dependencies
 
-The `oonta` binary does not have any runtime dependencies other than the
-standard library. However, for convenience, the `oonta` command provides the
-`--opt, -O`, `--compile / -c` and `--exec / -e` options to optimize the
-generated IR, compile the generated IR to an object code and executable,
-respectively. Internally, `oonta` will invoke the following commands:
+The `oonta` command provides the `--opt, -O`, `--compile / -c` and `--exec /
+-e` options to optimize the generated IR, compile the generated IR to an object
+code and executable, respectively. Internally, `oonta` will invoke the
+following commands:
 
 ```sh
 # with --opt
@@ -178,7 +177,7 @@ opt -S -O3 -o <.ll file> <.ll file>
 # with --compile
 llc -O3 -relocation-model=pic --filetype=obj -o <output> <.ll file>
 # with --exec
-clang -o <output> <.o file>
+clang -o <output> <.o file> -loonta_runtime
 ```
 On Ubuntu, install the `llvm` package to make those commands available.
 
@@ -193,6 +192,15 @@ sudo apt install llvm
 > The generated IR uses [opaque
 > pointers](https://llvm.org/docs/OpaquePointers.html). If your LLVM version is
 > older than version 15, the `--compile` / `--exec` options might not work.
+
+Additionally, with `--exec`, you need the *Oonta runtime library*:
+`liboonta_runtime.a`. If you're running an x64 linux machine, you can obtain
+the static library from the [release page]. If not, you would need to build the
+runtime from source by following the guide [below](#building-from-source).
+
+> [!NOTE]
+> Currently the runtime only provides allocation requests using *bump
+> allocation*. Garbage collection service is not yet available.
 
 ## User Guide
 
@@ -317,9 +325,20 @@ cd compiler_toys/oonta
 cargo build
 cargo test
 ```
-> [!NOTE]
-> `oonta` only depends on `jjik`, `jlek`, and Rust's standard library for
-> building.
+4. Install C++ build dependencies
+
+```
+sudo apt install build-essential cmake
+```
+
+5. Build & install `liboonta_runtime.a`
+
+```
+cmake -S runtime -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+sudo cmake --install build
+
+```
 
 ## Why is it called Oonta?
 
