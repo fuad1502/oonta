@@ -219,7 +219,12 @@ fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
 fn create_executable(path: &Path) -> Result<PathBuf, String> {
     let mut cmd = Command::new("clang");
     let executable = path.with_extension("out");
-    cmd.args(["-o", executable.to_str().unwrap(), path.to_str().unwrap()]);
+    cmd.args([
+        "-loonta_runtime",
+        "-o",
+        executable.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
     execute_command(cmd)?;
     Ok(executable)
 }

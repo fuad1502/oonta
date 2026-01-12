@@ -790,10 +790,10 @@ impl<'a> IRBuilder<'a> {
 
     fn malloc(&mut self, sz: usize) -> IRValue {
         let sz = IRValue::Pri(IRPri::I64(sz as i64));
-        let ret_typ = match self.module.get_function_decl("malloc") {
+        let ret_typ = match self.module.get_function_decl("gcmalloc") {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
-                let name = "malloc".to_string();
+                let name = "gcmalloc".to_string();
                 let ret_typ = IRType::Ptr;
                 let params = vec![IRType::I64];
                 let signature = FunSignature::new(name.clone(), ret_typ.clone(), params, false);
@@ -801,7 +801,7 @@ impl<'a> IRBuilder<'a> {
                 ret_typ
             }
         };
-        let fun_ptr = IRValue::Global("malloc".to_string(), IRType::Ptr);
+        let fun_ptr = IRValue::Global("gcmalloc".to_string(), IRType::Ptr);
         self.curr_fun().normal_call(fun_ptr, ret_typ, vec![sz])
     }
 }
