@@ -149,7 +149,7 @@ python3 benchmark/benchmark.py 10000 0 # run the insertion_sort.ml benchmark on 
 
 > [!IMPORTANT] 
 > Currently, for running the benchmark on large inputs, we have to increase the
-> stack size with `ulimit -s unlimited`
+> stack size limit with `ulimit -s unlimited`
 
 On my machine (AMD Ryzen™ 7 7700X × 16), the result of running the above
 benchmarks are as follows:
