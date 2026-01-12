@@ -76,7 +76,7 @@ pub enum InstrClass {
     Gt(IRType, IRValue, IRValue),
     And(IRType, IRValue, IRValue),
     Store(IRValue, IRValue),
-    Call(IRValue, IRType, Vec<IRValue>),
+    Call(IRValue, IRType, Vec<IRValue>, bool),
     Alloca(IRType),
     CondBrk(IRValue, String, String),
     Brk(String),
@@ -259,7 +259,7 @@ impl Function {
             .iter()
             .map(|i| IRValue::Pri(IRPri::I32(*i)))
             .collect();
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let instr = Instr {
             class: InstrClass::GetElemPtr(typ, src, indexes),
             res: IRValue::Reg(res_name, IRType::Ptr),
@@ -273,7 +273,7 @@ impl Function {
         if typ.is_void() {
             return IRValue::Void;
         }
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let instr = Instr {
             class: InstrClass::Load(typ.clone(), src),
             res: IRValue::Reg(res_name, typ),
@@ -302,15 +302,23 @@ impl Function {
         self.push_instr(instr);
     }
 
-    pub fn call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
+    pub fn fast_call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
+        self.call(fun, typ, args, true)
+    }
+
+    pub fn normal_call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>) -> IRValue {
+        self.call(fun, typ, args, false)
+    }
+
+    fn call(&mut self, fun: IRValue, typ: IRType, args: Vec<IRValue>, fast: bool) -> IRValue {
         let res = if typ.is_void() {
             IRValue::Void
         } else {
-            let res_name = self.new_name("");
+            let res_name = self.new_name("r");
             IRValue::Reg(res_name, typ.clone())
         };
         let instr = Instr {
-            class: InstrClass::Call(fun, typ, args),
+            class: InstrClass::Call(fun, typ, args, fast),
             res,
         };
         self.push_instr(instr.clone());
@@ -322,7 +330,7 @@ impl Function {
         if typ.is_void() {
             return IRValue::Void;
         }
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let instr = Instr {
             class: InstrClass::Alloca(typ),
             res: IRValue::Reg(res_name, IRType::Ptr),
@@ -354,7 +362,7 @@ impl Function {
         rhs: IRValue,
         operator: Operator,
     ) -> IRValue {
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let op_typ = lhs.typ().clone();
         let class = match operator {
             Operator::Plus => InstrClass::Add(op_typ, lhs, rhs),
@@ -376,7 +384,7 @@ impl Function {
     }
 
     pub fn and(&mut self, lhs: IRValue, rhs: IRValue) -> IRValue {
-        let res_name = self.new_name("");
+        let res_name = self.new_name("r");
         let typ = lhs.typ();
         let instr = Instr {
             class: InstrClass::And(typ.clone(), lhs, rhs),
@@ -411,7 +419,8 @@ impl std::fmt::Display for Function {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         let typ = &self.ret_typ;
         let name = &self.name;
-        write!(fmt, "define {typ} @{name}(")?;
+        // TODO: use other calling convention for fast call
+        write!(fmt, "define ccc {typ} @{name}(")?;
         write_comma_separated(&self.params, fmt)?;
         writeln!(fmt, ") {{")?;
         self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
@@ -532,8 +541,10 @@ impl std::fmt::Display for InstrClass {
                 write!(fmt, "and {irtype} {}, {}", lhs.name(), rhs.name())
             }
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
-            InstrClass::Call(fun_ptr, ret_typ, args) => {
-                write!(fmt, "call {ret_typ} {}(", fun_ptr.name())?;
+            InstrClass::Call(fun_ptr, ret_typ, args, fast) => {
+                // TODO: use other calling convention for fast call
+                let cc = if *fast { "ccc" } else { "" };
+                write!(fmt, "call {cc} {ret_typ} {}(", fun_ptr.name())?;
                 write_comma_separated(args, fmt)?;
                 write!(fmt, ")")
             }

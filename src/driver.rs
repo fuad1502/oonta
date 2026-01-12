@@ -22,6 +22,7 @@ use crate::{
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub enum CompileOptions {
     TopLevel,
+    OptimizeIR,
     CreateObjFile,
     CreateExecutable,
     DebugPhases,
@@ -30,6 +31,7 @@ pub enum CompileOptions {
 struct Driver {
     debug_phases: bool,
     top_level: bool,
+    optimize_ir: bool,
     create_obj_file: bool,
     create_executable: bool,
     step: &'static str,
@@ -38,6 +40,7 @@ struct Driver {
 
 pub fn compile(src_path: &Path, out_path: &Path, options: &[CompileOptions]) -> Result<(), String> {
     let debug_phases = options.contains(&CompileOptions::DebugPhases);
+    let optimize_ir = options.contains(&CompileOptions::OptimizeIR);
     let create_executable = options.contains(&CompileOptions::CreateExecutable);
     let create_obj_file = options.contains(&CompileOptions::CreateObjFile);
     let top_level = options.contains(&CompileOptions::TopLevel);
@@ -48,6 +51,7 @@ pub fn compile(src_path: &Path, out_path: &Path, options: &[CompileOptions]) -> 
     Driver {
         debug_phases,
         top_level,
+        optimize_ir,
         create_obj_file,
         create_executable,
         step: "",
@@ -96,6 +100,12 @@ impl Driver {
         self.dbg_start("Write LLVM module");
         write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
         self.dbg_end();
+
+        if self.optimize_ir {
+            self.dbg_start("Optimize LLVM IR");
+            optimize_llvm_ir(out_path)?;
+            self.dbg_end();
+        }
 
         if self.create_obj_file {
             self.dbg_start("LLVM backend");
@@ -178,10 +188,24 @@ fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
     module.serialize(Box::new(wr))
 }
 
+fn optimize_llvm_ir(path: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("opt");
+    cmd.args([
+        "-S",
+        "-O3",
+        "-o",
+        path.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(())
+}
+
 fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
     let mut cmd = Command::new("llc");
     let obj_file = path.with_extension("o");
     cmd.args([
+        "-O3",
         "-relocation-model=pic",
         "--filetype=obj",
         "-o",
@@ -225,7 +249,12 @@ mod test {
 
     #[test]
     fn ll_arithmetic() {
-        ll("arithmetic");
+        ll("arithmetic", false);
+    }
+
+    #[test]
+    fn ll_opt_arithmetic() {
+        ll("arithmetic", true);
     }
 
     #[test]
@@ -240,7 +269,12 @@ mod test {
 
     #[test]
     fn ll_merge_sort() {
-        ll("merge_sort");
+        ll("merge_sort", false);
+    }
+
+    #[test]
+    fn ll_opt_merge_sort() {
+        ll("merge_sort", true);
     }
 
     #[test]
@@ -253,9 +287,16 @@ mod test {
         exec("merge_sort", "12345");
     }
 
-    fn ll(test_name: &str) {
-        let options = vec![];
-        let out_path = out_path(test_name, "ll");
+    fn ll(test_name: &str, opt: bool) {
+        let (options, out_path) = if opt {
+            let options = vec![CompileOptions::OptimizeIR];
+            let out_path = out_path(test_name, "llopt");
+            (options, out_path)
+        } else {
+            let options = vec![];
+            let out_path = out_path(test_name, "ll");
+            (options, out_path)
+        };
         clear_output_files(&out_path);
         compile(&src_path(test_name), &out_path, &options).unwrap();
 

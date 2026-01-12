@@ -26,6 +26,7 @@ pub struct IRBuilder<'a> {
 struct Context {
     ir_values: HashMap<String, IRValue>,
     fun_name: String,
+    recursive_bind: Option<String>,
     parent: Option<Box<Context>>,
 }
 
@@ -48,7 +49,7 @@ impl<'a> IRBuilder<'a> {
             type_map,
             custom_types,
             lexer,
-            context: Some(Context::new(main_fun_name)),
+            context: Some(Context::new(main_fun_name, None)),
             module,
             anon_fun_count: 0,
         };
@@ -117,7 +118,7 @@ impl<'a> IRBuilder<'a> {
         self.module.new_function(fun_name.clone(), fun);
 
         // 2. Populate context
-        self.push_ctx(fun_name.clone());
+        self.push_ctx(fun_name.clone(), fun_expr.recursive_bind.clone());
 
         // > insert parameters to context
         for (i, name) in param_names.into_iter().enumerate() {
@@ -217,9 +218,16 @@ impl<'a> IRBuilder<'a> {
             .collect::<Vec<IRValue>>();
         let closure = self.visit_expr(&application_expr.fun.borrow());
         args.push(closure.clone());
-        let fun = self.curr_fun().load(IRType::Ptr, closure);
+        let fun = if let Expr::Var(VarExpr { id }) = &*application_expr.fun.borrow()
+            && let Some(recursive_name) = self.get_ctx_recursive_bind()
+            && self.lexer.str_from_span(id) == recursive_name
+        {
+            IRValue::Global(self.curr_fun().name().to_string(), IRType::Ptr)
+        } else {
+            self.curr_fun().load(IRType::Ptr, closure)
+        };
         let res_typ = self.get_ir_typ(expr_ptr);
-        self.curr_fun().call(fun, res_typ, args)
+        self.curr_fun().fast_call(fun, res_typ, args)
     }
 
     fn visit_partial_application_expr(
@@ -231,7 +239,7 @@ impl<'a> IRBuilder<'a> {
     ) -> IRValue {
         // 1. Create function
         let dispatch_fun_name = self.new_anon_fun_name();
-        let dispath_param_names = vec![String::new(); num_of_remainding_args];
+        let dispath_param_names = vec!["p".to_string(); num_of_remainding_args];
         let mut dispatch_fun = Function::from_typ(
             dispatch_fun_name.clone(),
             dispath_param_names.clone(),
@@ -285,7 +293,7 @@ impl<'a> IRBuilder<'a> {
         }
 
         // 3. Create function body
-        self.push_ctx(dispatch_fun_name);
+        self.push_ctx(dispatch_fun_name, None);
         let num_of_params = self.curr_fun().num_of_params();
         let env = self.curr_fun().param(num_of_params - 1);
 
@@ -315,7 +323,7 @@ impl<'a> IRBuilder<'a> {
         // > call fun with args
         let fun = self.curr_fun().load(IRType::Ptr, closure);
         let res_typ = IRType::from(&dispatch_ret_typ);
-        let res = self.curr_fun().call(fun, res_typ, args);
+        let res = self.curr_fun().fast_call(fun, res_typ, args);
         self.curr_fun().ret(res);
 
         self.pop_ctx();
@@ -445,8 +453,7 @@ impl<'a> IRBuilder<'a> {
         store_ptr: IRValue,
         exit_label: String,
     ) {
-        let fun_name = self.curr_fun().name().to_string();
-        self.push_ctx(fun_name);
+        self.dup_ctx();
         bindings
             .into_iter()
             .for_each(|(name, val)| self.insert_name_to_ctx(name, val));
@@ -457,8 +464,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_let_in_expr(&mut self, let_in_expr: &LetInExpr) -> IRValue {
-        let fun_name = self.curr_fun().name().to_string();
-        self.push_ctx(fun_name);
+        self.dup_ctx();
         let bind_val = self.visit_expr(&let_in_expr.bind.1.borrow());
         let bind_name = self.lexer.str_from_span(&let_in_expr.bind.0).to_string();
         self.insert_name_to_ctx(bind_name, bind_val);
@@ -623,7 +629,7 @@ impl<'a> IRBuilder<'a> {
 
     fn populate_builtins(mut self) -> Self {
         let fmt_str_name = "fmt".to_string();
-        let init = IRValue::Pri(IRPri::Str("%d"));
+        let init = IRValue::Pri(IRPri::Str("%lld"));
         self.module.new_global_constant(fmt_str_name.clone(), init);
         let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
         self.insert_print_int_builtin(fmt_str_ptr.clone())
@@ -642,11 +648,11 @@ impl<'a> IRBuilder<'a> {
         // 2. Define print_int function
         let anon_fun_name = self.new_anon_fun_name();
         let ret_typ = IRType::Void;
-        let params = vec![(String::new(), IRType::I32)];
+        let params = vec![("p".to_string(), IRType::I64)];
         let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
         let printf_fun_ptr = IRValue::Global(printf_fun_name, IRType::Ptr);
         let printf_args = vec![fmt_str_ptr, fun.param(0)];
-        fun.call(printf_fun_ptr, IRType::I32, printf_args);
+        fun.normal_call(printf_fun_ptr, IRType::I32, printf_args);
         fun.ret(IRValue::Void);
         self.module.new_function(anon_fun_name.clone(), fun);
 
@@ -685,7 +691,7 @@ impl<'a> IRBuilder<'a> {
         let scanf_fun_ptr = IRValue::Global(scanf_fun_name, IRType::Ptr);
         let res_ptr = fun.alloca(IRType::I64);
         let scanf_args = vec![fmt_str_ptr, res_ptr.clone()];
-        fun.call(scanf_fun_ptr, IRType::I32, scanf_args);
+        fun.normal_call(scanf_fun_ptr, IRType::I32, scanf_args);
         let res = fun.load(IRType::I64, res_ptr);
         fun.ret(res);
         self.module.new_function(anon_fun_name.clone(), fun);
@@ -745,10 +751,28 @@ impl<'a> IRBuilder<'a> {
         }
     }
 
-    fn push_ctx(&mut self, function_name: String) {
-        let mut new_ctx = Context::new(function_name);
+    fn get_ctx_recursive_bind(&self) -> &Option<String> {
+        if let Some(context) = &self.context {
+            &context.recursive_bind
+        } else {
+            panic!("context unassigned")
+        }
+    }
+
+    fn push_ctx(&mut self, function_name: String, recursive_bind: Option<String>) {
+        let mut new_ctx = Context::new(function_name, recursive_bind);
         new_ctx.parent = self.context.take().map(Box::new);
         self.context = Some(new_ctx);
+    }
+
+    fn dup_ctx(&mut self) {
+        if let Some(parent) = self.context.take() {
+            let mut new_ctx = Context::new(parent.fun_name.clone(), parent.recursive_bind.clone());
+            new_ctx.parent = Some(Box::new(parent));
+            self.context = Some(new_ctx);
+        } else {
+            panic!("cannot call dup_ctx without parent ctx")
+        }
     }
 
     fn pop_ctx(&mut self) {
@@ -778,16 +802,17 @@ impl<'a> IRBuilder<'a> {
             }
         };
         let fun_ptr = IRValue::Global("malloc".to_string(), IRType::Ptr);
-        self.curr_fun().call(fun_ptr, ret_typ, vec![sz])
+        self.curr_fun().normal_call(fun_ptr, ret_typ, vec![sz])
     }
 }
 
 impl Context {
-    fn new(function_name: String) -> Self {
+    fn new(function_name: String, recursive_bind: Option<String>) -> Self {
         Self {
             ir_values: HashMap::new(),
-            parent: None,
             fun_name: function_name,
+            recursive_bind,
+            parent: None,
         }
     }
 

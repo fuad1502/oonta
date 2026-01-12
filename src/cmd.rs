@@ -12,6 +12,7 @@ pub enum CmdOptions {
     OutputPath,
     TopLevel,
     Compile,
+    Optimize,
     Exec,
     Verbose,
 }
@@ -55,6 +56,7 @@ Options:
   -h, --help                    Display this information. 
   -o <file>, --output <file>    Write output to file.
   -t, --top-level               Output main function instead of caml_main.
+  -O, --opt                         Optimize LLVM IR output.
   -c, --compile                 Compile LLVM IR to object file using LLVM.
   -e, --exec                    Compile LLVM IR to executable. Turning this
                                 option on implicitly turns on both '-t' and
@@ -100,6 +102,7 @@ impl TryFrom<&str> for CmdOptions {
             "help" => Ok(Self::Help),
             "output" => Ok(Self::OutputPath),
             "top-level" => Ok(Self::TopLevel),
+            "opt" => Ok(Self::Optimize),
             "compile" => Ok(Self::Compile),
             "exec" => Ok(Self::Exec),
             "verbose" => Ok(Self::Verbose),
@@ -116,6 +119,7 @@ impl TryFrom<char> for CmdOptions {
             'h' => Ok(Self::Help),
             'o' => Ok(Self::OutputPath),
             't' => Ok(Self::TopLevel),
+            'O' => Ok(Self::Optimize),
             'c' => Ok(Self::Compile),
             'e' => Ok(Self::Exec),
             'v' => Ok(Self::Verbose),
@@ -133,6 +137,7 @@ impl CmdOptions {
             CmdOptions::Compile => false,
             CmdOptions::Exec => false,
             CmdOptions::Verbose => false,
+            CmdOptions::Optimize => false,
         }
     }
 }

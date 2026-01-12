@@ -8,11 +8,12 @@ language](https://ocaml.org): it generates [LLVM intermediate representation
 
 *Oonta* uses the [JJIK](https://github.com/fuad1502/jjik) parser generator and
 [JLEK](https://github.com/fuad1502/jlek) lexer generator to perform the parsing
-and lexing stages.
+and lexing stages. For building the IR, *Oonta* does not depend on the LLVM
+API.
 
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
-> supported. For example, custom types, pattern matching, and modules are not
+> supported. For example, polymorphic functions and types, and modules are not
 > yet supported. Additionally, the garbage collector runtime is not yet
 > available. See the issues tab for the list of work items.
 
@@ -26,29 +27,188 @@ and lexing stages.
 ```sh
 cargo install oonta
 cat << EOF > main.ml
-let square x = x * x
-let a = square 3
-let () = print_int a
 let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
-let b = factorial 5
-let () = print_int b
+let a = factorial 5
+let () = print_int a
 EOF
 oonta --exec main.ml
 ./main.out
-# 9
 # 120
 ```
+## Benchmark
+
+Two benchmarks are provided:
+
+Merge sort (`benchmark/merge_sort.ml`):
+
+```ocaml
+type list =
+  | Empty
+  | Cat of (int * list)
+
+let rec map f lst =
+  match lst with
+  | Empty -> ()
+  | Cat (x, l) ->
+      let () = f x in
+      map f l
+
+let rec split_aux lst acc_left acc_right =
+  match lst with
+  | Empty -> (acc_left, acc_right)
+  | Cat (head, rest) -> split_aux rest acc_right (Cat (head, acc_left))
+
+let split lst = split_aux lst Empty Empty
+
+let rec merge left right =
+  match (left, right) with
+  | Empty, right -> right
+  | lest, Empty -> lest
+  | Cat (left_head, left_rest), Cat (right_head, right_rest) ->
+      if left_head <= right_head then
+        Cat (left_head, merge left_rest right)
+      else
+        Cat (right_head, merge left right_rest)
+
+let rec merge_sort lst =
+  match lst with
+  | Empty -> lst
+  | Cat (_, Empty) -> lst
+  | _ ->
+      let splitted_lst = split lst in
+      let left =
+        match splitted_lst with
+        | lst, _ -> lst
+      in
+      let right =
+        match splitted_lst with
+        | _, lst -> lst
+      in
+      merge (merge_sort left) (merge_sort right)
+
+let rec create_lst_aux n acc =
+  match n with
+  | 0 -> acc
+  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
+
+let create_lst n = create_lst_aux n Empty
+let n = read_int ()
+let lst = create_lst n
+let sorted_lst = merge_sort lst
+let () = map print_int sorted_lst
+```
+And insertion sort (`benchmark/insertion_sort.ml`):
+
+```ocaml
+type list =
+  | Empty
+  | Cat of (int * list)
+
+let rec map f lst =
+  match lst with
+  | Empty -> ()
+  | Cat (x, l) ->
+      let () = f x in
+      map f l
+
+let rec create_lst_aux n acc =
+  match n with
+  | 0 -> acc
+  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
+
+let rec insert elem lst =
+  match lst with
+  | Empty -> Cat (elem, Empty)
+  | Cat (head, tail) ->
+      if elem <= head then
+        Cat (elem, lst)
+      else
+        Cat (head, insert elem tail)
+
+let rec insertion_sort lst =
+  match lst with
+  | Empty -> Empty
+  | Cat (head, tail) -> insert head (insertion_sort tail)
+
+let create_lst n = create_lst_aux n Empty
+let n = read_int ()
+let lst = create_lst n
+let sorted_lst = insertion_sort lst
+let () = map print_int sorted_lst
+```
+Execute the following command inside the repository root folder to run the
+benchmarks.
+
+```sh
+python3 benchmark/benchmark.py 1000000 0 # run the merge_sort.ml benchmark on a list with 1 million elements
+python3 benchmark/benchmark.py 10000 0 # run the insertion_sort.ml benchmark on a list with 10000 elements
+```
+
+> [!IMPORTANT] 
+> Currently, for running the benchmark on large inputs, we have to increase the
+> stack size limit with `ulimit -s unlimited`
+
+On my machine (AMD Ryzen™ 7 7700X × 16), the result of running the above
+benchmarks are as follows:
+
+```text
+Benchmarking: merge_sort.ml
+Elapsed time (./benchmark/ocamlopt.out): 0.8648 seconds
+Elapsed time (./benchmark/oonta.out): 1.5996 seconds
+> 1.85 times slower
+
+Benchmarking: insertion_sort.ml
+Elapsed time (./benchmark/ocamlopt.out): 0.1317 seconds
+Elapsed time (./benchmark/oonta.out): 0.8740 seconds
+> 6.64 times slower
+```
+One probable reason for the slow down is because (currently) it constantly
+request for memory allocations through `malloc` calls for each tuple and
+variant construction expression. Additionally, since there is no garbage
+collector, the memory usage will be very high and it would not use the cache
+very effectively.
+
+By running `time` on `oonta.out` and `ocamlopt.out`, we could see that most of
+the excess time is used by system calls.
+
+```text
+# /usr/bin/time -v benchmark/oonta.out < benchmark/input.txt > benchmark/output.txt   
+        Command being timed: "benchmark/oonta.out"
+        User time (seconds): 0.92
+        System time (seconds): 0.65
+        Percent of CPU this job got: 100%
+        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.58
+        ...
+        Maximum resident set size (kbytes): 2603072
+        ...
+        Minor (reclaiming a frame) page faults: 650487
+        ...
+# /usr/bin/time -v benchmark/ocamlopt.out < benchmark/input.txt > benchmark/output.txt
+        Command being timed: "benchmark/ocamlopt.out"
+        User time (seconds): 0.77
+        System time (seconds): 0.08
+        Percent of CPU this job got: 99%
+        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.85
+        ...
+        Maximum resident set size (kbytes): 257520
+        ...
+        Minor (reclaiming a frame) page faults: 67946
+        ...
+```
+
 ## Dependencies
 
 The `oonta` binary does not have any runtime dependencies other than the
 standard library. However, for convenience, the `oonta` command provides the
-`--compile / -c` and `--exec / -e` options to compile the generated IR to an
-object code and executable, respectively. Internally, `oonta` will invoke the
-following commands:
+`--opt, -O`, `--compile / -c` and `--exec / -e` options to optimize the
+generated IR, compile the generated IR to an object code and executable,
+respectively. Internally, `oonta` will invoke the following commands:
 
 ```sh
+# with --opt
+opt -S -O3 -o <.ll file> <.ll file>
 # with --compile
-llc -relocation-model=pic --filetype=obj -o <output> <.ll file>
+llc -O3 -relocation-model=pic --filetype=obj -o <output> <.ll file>
 # with --exec
 clang -o <output> <.o file>
 ```

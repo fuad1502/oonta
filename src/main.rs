@@ -40,6 +40,9 @@ fn main() -> ExitCode {
     if cmd.options.contains_key(&CmdOptions::TopLevel) {
         compile_options.push(CompileOptions::TopLevel);
     }
+    if cmd.options.contains_key(&CmdOptions::Optimize) {
+        compile_options.push(CompileOptions::OptimizeIR);
+    }
     if cmd.options.contains_key(&CmdOptions::Compile) {
         compile_options.push(CompileOptions::CreateObjFile);
     }
