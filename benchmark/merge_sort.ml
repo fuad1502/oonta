@@ -9,6 +9,13 @@ let rec map f lst =
       let () = f x in
       map f l
 
+let rec create_lst_aux n acc =
+  match n with
+  | 0 -> acc
+  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
+
+let create_lst n = create_lst_aux n Empty
+
 let rec split_aux lst acc_left acc_right =
   match lst with
   | Empty -> (acc_left, acc_right)
@@ -42,12 +49,6 @@ let rec merge_sort lst =
       in
       merge (merge_sort left) (merge_sort right)
 
-let rec create_lst_aux n acc =
-  match n with
-  | 0 -> acc
-  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
-
-let create_lst n = create_lst_aux n Empty
 let n = read_int ()
 let lst = create_lst n
 let sorted_lst = merge_sort lst

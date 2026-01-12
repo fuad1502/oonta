@@ -21,10 +21,12 @@ pub struct GlobalVar {
     constant: bool,
 }
 
+// TODO: Refactor to include FunSignature struct
 pub struct Function {
     name: String,
     ret_typ: IRType,
     params: Vec<Param>,
+    options: FunOptions,
     bbs: Vec<BasicBlock>,
     curr_bb: String,
     used_names: HashMap<String, usize>,
@@ -36,7 +38,13 @@ pub struct FunSignature {
     name: String,
     ret_typ: IRType,
     params: Vec<IRType>,
+    options: FunOptions,
+}
+
+pub struct FunOptions {
     is_varargs: bool,
+    allocator: bool,
+    fastcc: bool,
 }
 
 pub struct BasicBlock {
@@ -180,6 +188,7 @@ impl Function {
         let mut fun = Self {
             name,
             ret_typ,
+            options: FunOptions::default(),
             params: vec![],
             bbs: vec![],
             curr_bb: String::new(),
@@ -417,12 +426,14 @@ impl Function {
 
 impl std::fmt::Display for Function {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
-        let typ = &self.ret_typ;
+        let ret_typ = &self.ret_typ;
         let name = &self.name;
-        // TODO: use other calling convention for fast call
-        write!(fmt, "define ccc {typ} @{name}(")?;
+        write!(fmt, "define {} {ret_typ} @{name}(", self.options.cc_str())?;
         write_comma_separated(&self.params, fmt)?;
-        writeln!(fmt, ") {{")?;
+        if self.options.is_varargs {
+            write!(fmt, ", ...")?;
+        }
+        writeln!(fmt, ") {} {{", self.options.fun_attr_str())?;
         self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
         write!(fmt, "}}")
     }
@@ -437,13 +448,28 @@ impl std::fmt::Display for Param {
 }
 
 impl FunSignature {
-    pub fn new(name: String, ret_typ: IRType, params: Vec<IRType>, is_varargs: bool) -> Self {
+    pub fn new(name: String, ret_typ: IRType, params: Vec<IRType>) -> Self {
         Self {
             name,
             ret_typ,
             params,
-            is_varargs,
+            options: FunOptions::default(),
         }
+    }
+
+    pub fn varargs(mut self) -> Self {
+        self.options.is_varargs = true;
+        self
+    }
+
+    pub fn ccc(mut self) -> Self {
+        self.options.fastcc = false;
+        self
+    }
+
+    pub fn alloc(mut self) -> Self {
+        self.options.allocator = true;
+        self
     }
 
     pub fn ret_typ(&self) -> &IRType {
@@ -455,12 +481,38 @@ impl std::fmt::Display for FunSignature {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         let ret_typ = &self.ret_typ;
         let name = &self.name;
-        write!(fmt, "declare {ret_typ} @{name}(")?;
+        write!(fmt, "declare {} {ret_typ} @{name}(", self.options.cc_str())?;
         write_comma_separated(&self.params, fmt)?;
-        if self.is_varargs {
+        if self.options.is_varargs {
             write!(fmt, ", ...")?;
         }
-        write!(fmt, ")")
+        write!(fmt, ") {}", self.options.fun_attr_str())?;
+        Ok(())
+    }
+}
+
+impl FunOptions {
+    fn cc_str(&self) -> &'static str {
+        // TODO: use other calling convention for fast call
+        if self.fastcc { "ccc" } else { "" }
+    }
+
+    fn fun_attr_str(&self) -> &'static str {
+        if self.allocator {
+            "mustprogress nofree nounwind willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite)"
+        } else {
+            ""
+        }
+    }
+}
+
+impl Default for FunOptions {
+    fn default() -> Self {
+        Self {
+            is_varargs: false,
+            allocator: false,
+            fastcc: true,
+        }
     }
 }
 

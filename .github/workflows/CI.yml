@@ -10,28 +10,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-rust:
-
+  build:
+    
     strategy:
       matrix:
         os:
           - ubuntu-24.04
-        profile:
-          - dev
-          - release
 
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-    - name: Install LLVM
-      run: sudo apt update && sudo apt install -y llvm
-    - name: Build
-      run: cargo build --profile ${{ matrix.profile }} --verbose
-    - name: Run tests
-      run: cargo test --verbose --all
-    - name: Check code format
-      run: cargo fmt --check --verbose --all
-    - name: Check clippy errors
-      run: cargo clippy --all-targets
+      - uses: actions/checkout@v4
+      - name: Build runtime
+        run: |
+          cmake -DCMAKE_BUILD_TYPE=Release -S runtime -B build
+          cmake --build build
+      - name: Check runtime code format
+        run: |
+          find runtime \
+          -iname '*.hpp' -o \
+          -iname '*.h' -o \
+          -iname '*.cpp' -o \
+          -iname '*.c' \
+          | xargs clang-format --dry-run --Werror --verbose
+      - name: Install liboonta_runtime.a
+        run: sudo cmake --install build
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install LLVM
+        run: sudo apt update && sudo apt install -y llvm
+      - name: Build oonta
+        run: cargo build --profile release --verbose
+      - name: Run oonta tests
+        run: cargo test --verbose --all
+      - name: Check oonta code format
+        run: cargo fmt --check --verbose --all
+      - name: Check clippy errors
+        run: cargo clippy --all-targets

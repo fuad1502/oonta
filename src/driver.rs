@@ -219,7 +219,12 @@ fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
 fn create_executable(path: &Path) -> Result<PathBuf, String> {
     let mut cmd = Command::new("clang");
     let executable = path.with_extension("out");
-    cmd.args(["-o", executable.to_str().unwrap(), path.to_str().unwrap()]);
+    cmd.args([
+        "-o",
+        executable.to_str().unwrap(),
+        path.to_str().unwrap(),
+        "-loonta_runtime",
+    ]);
     execute_command(cmd)?;
     Ok(executable)
 }
@@ -319,7 +324,7 @@ mod test {
     }
 
     fn exec(test_name: &str, stdout_expect: &str) {
-        let options = vec![CompileOptions::CreateExecutable];
+        let options = vec![CompileOptions::CreateExecutable, CompileOptions::OptimizeIR];
         let out_path = out_path(test_name, "exec");
         clear_output_files(&out_path);
         compile(&src_path(test_name), &out_path, &options).unwrap();

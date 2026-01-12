@@ -14,8 +14,8 @@ API.
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
 > supported. For example, polymorphic functions and types, and modules are not
-> yet supported. Additionally, the garbage collector runtime is not yet
-> available. See the issues tab for the list of work items.
+> yet supported. Additionally, the runtime does not yet provide a garbage
+> collection service. See the issues tab for the list of work items.
 
 > [!NOTE]
 > This project is part of the ["Compiler
@@ -31,7 +31,7 @@ let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
 let a = factorial 5
 let () = print_int a
 EOF
-oonta --exec main.ml
+oonta --opt --exec main.ml
 ./main.out
 # 120
 ```
@@ -52,6 +52,13 @@ let rec map f lst =
   | Cat (x, l) ->
       let () = f x in
       map f l
+
+let rec create_lst_aux n acc =
+  match n with
+  | 0 -> acc
+  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
+
+let create_lst n = create_lst_aux n Empty
 
 let rec split_aux lst acc_left acc_right =
   match lst with
@@ -86,12 +93,6 @@ let rec merge_sort lst =
       in
       merge (merge_sort left) (merge_sort right)
 
-let rec create_lst_aux n acc =
-  match n with
-  | 0 -> acc
-  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
-
-let create_lst n = create_lst_aux n Empty
 let n = read_int ()
 let lst = create_lst n
 let sorted_lst = merge_sort lst
@@ -116,9 +117,11 @@ let rec create_lst_aux n acc =
   | 0 -> acc
   | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
 
+let create_lst n = create_lst_aux n Empty
+
 let rec insert elem lst =
   match lst with
-  | Empty -> Cat (elem, Empty)
+  | Empty -> Cat (elem, lst)
   | Cat (head, tail) ->
       if elem <= head then
         Cat (elem, lst)
@@ -127,10 +130,9 @@ let rec insert elem lst =
 
 let rec insertion_sort lst =
   match lst with
-  | Empty -> Empty
+  | Empty -> lst
   | Cat (head, tail) -> insert head (insertion_sort tail)
 
-let create_lst n = create_lst_aux n Empty
 let n = read_int ()
 let lst = create_lst n
 let sorted_lst = insertion_sort lst
@@ -153,56 +155,21 @@ benchmarks are as follows:
 
 ```text
 Benchmarking: merge_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.8648 seconds
-Elapsed time (./benchmark/oonta.out): 1.5996 seconds
-> 1.85 times slower
+Elapsed time (./benchmark/ocamlopt.out): 0.8710 seconds
+Elapsed time (./benchmark/oonta.out): 0.7323 seconds
+> 1.19 times faster
 
 Benchmarking: insertion_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.1317 seconds
-Elapsed time (./benchmark/oonta.out): 0.8740 seconds
-> 6.64 times slower
+Elapsed time (./benchmark/ocamlopt.out): 0.1323 seconds
+Elapsed time (./benchmark/oonta.out): 0.3363 seconds
+> 2.54 times slower
 ```
-One probable reason for the slow down is because (currently) it constantly
-request for memory allocations through `malloc` calls for each tuple and
-variant construction expression. Additionally, since there is no garbage
-collector, the memory usage will be very high and it would not use the cache
-very effectively.
-
-By running `time` on `oonta.out` and `ocamlopt.out`, we could see that most of
-the excess time is used by system calls.
-
-```text
-# /usr/bin/time -v benchmark/oonta.out < benchmark/input.txt > benchmark/output.txt   
-        Command being timed: "benchmark/oonta.out"
-        User time (seconds): 0.92
-        System time (seconds): 0.65
-        Percent of CPU this job got: 100%
-        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.58
-        ...
-        Maximum resident set size (kbytes): 2603072
-        ...
-        Minor (reclaiming a frame) page faults: 650487
-        ...
-# /usr/bin/time -v benchmark/ocamlopt.out < benchmark/input.txt > benchmark/output.txt
-        Command being timed: "benchmark/ocamlopt.out"
-        User time (seconds): 0.77
-        System time (seconds): 0.08
-        Percent of CPU this job got: 99%
-        Elapsed (wall clock) time (h:mm:ss or m:ss): 0:00.85
-        ...
-        Maximum resident set size (kbytes): 257520
-        ...
-        Minor (reclaiming a frame) page faults: 67946
-        ...
-```
-
 ## Dependencies
 
-The `oonta` binary does not have any runtime dependencies other than the
-standard library. However, for convenience, the `oonta` command provides the
-`--opt, -O`, `--compile / -c` and `--exec / -e` options to optimize the
-generated IR, compile the generated IR to an object code and executable,
-respectively. Internally, `oonta` will invoke the following commands:
+The `oonta` command provides the `--opt, -O`, `--compile / -c` and `--exec /
+-e` options to optimize the generated IR, compile the generated IR to an object
+code and executable, respectively. Internally, `oonta` will invoke the
+following commands:
 
 ```sh
 # with --opt
@@ -210,7 +177,7 @@ opt -S -O3 -o <.ll file> <.ll file>
 # with --compile
 llc -O3 -relocation-model=pic --filetype=obj -o <output> <.ll file>
 # with --exec
-clang -o <output> <.o file>
+clang -o <output> <.o file> -loonta_runtime
 ```
 On Ubuntu, install the `llvm` package to make those commands available.
 
@@ -225,6 +192,15 @@ sudo apt install llvm
 > The generated IR uses [opaque
 > pointers](https://llvm.org/docs/OpaquePointers.html). If your LLVM version is
 > older than version 15, the `--compile` / `--exec` options might not work.
+
+Additionally, with `--exec`, you need the *Oonta runtime library*:
+`liboonta_runtime.a`. If you're running an x64 linux machine, you can obtain
+the static library from the [release page]. If not, you would need to build the
+runtime from source by following the guide [below](#building-from-source).
+
+> [!NOTE]
+> Currently the runtime only provides allocation requests using *bump
+> allocation*. Garbage collection service is not yet available.
 
 ## User Guide
 
@@ -331,28 +307,38 @@ Error: cannot bind expression of type int to ()
 
 ## Building from source
 
-1. Install `cargo` tool:
+1. Install C++ build dependencies
+
+```
+sudo apt install build-essential cmake
+```
+2. Install `cargo` tool:
 
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
-
-2. Clone repository.
+3. Clone repository.
 
 ```sh
 git clone https://github.com/fuad1502/oonta.git
 ```
-3. Build `oonta` crate.
+4. Build `liboonta_runtime.a`
+
+```
+cmake -S runtime -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+5. Install `liboonta_runtime.a`
+
+```
+sudo cmake --install build
+```
+6. Build `oonta`.
 
 ```sh
-cd compiler_toys/oonta
 cargo build
 cargo test
 ```
-> [!NOTE]
-> `oonta` only depends on `jjik`, `jlek`, and Rust's standard library for
-> building.
-
 ## Why is it called Oonta?
 
 *Oonta*, is based on the Indonesian word *unta*, which translates to "camel".

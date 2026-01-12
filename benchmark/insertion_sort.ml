@@ -14,9 +14,11 @@ let rec create_lst_aux n acc =
   | 0 -> acc
   | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
 
+let create_lst n = create_lst_aux n Empty
+
 let rec insert elem lst =
   match lst with
-  | Empty -> Cat (elem, Empty)
+  | Empty -> Cat (elem, lst)
   | Cat (head, tail) ->
       if elem <= head then
         Cat (elem, lst)
@@ -25,10 +27,9 @@ let rec insert elem lst =
 
 let rec insertion_sort lst =
   match lst with
-  | Empty -> Empty
+  | Empty -> lst
   | Cat (head, tail) -> insert head (insertion_sort tail)
 
-let create_lst n = create_lst_aux n Empty
 let n = read_int ()
 let lst = create_lst n
 let sorted_lst = insertion_sort lst
