@@ -150,8 +150,9 @@ python3 benchmark/benchmark.py 10000 0 # run the insertion_sort.ml benchmark on 
 > Currently, for running the benchmark on large inputs, we have to increase the
 > stack size limit with `ulimit -s unlimited`
 
-On my machine (AMD Ryzen™ 7 7700X × 16), the result of running the above
-benchmarks are as follows:
+On my Ubuntu machine (AMD Ryzen™ 7 7700X × 16), with `ocamlopt` version 5.4.0
+and LLVM version 20.1.8, the result of running the above benchmarks are as
+follows:
 
 ```text
 Benchmarking: merge_sort.ml
