@@ -6,10 +6,10 @@
 ## Table of Contents
 
 * [Introduction](#introduction)
-* [Quick Start](#quick-start)
-* [Benchmark](#benchmark)
-* [Dependencies](#dependencies)
+* [Quick Start (Ubuntu)](#quick-start-ubuntu)
+* [Benchmark against `ocamlopt`](#benchmark-against-ocamlopt)
 * [User Guide](#user-guide)
+* [Dependencies](#dependencies)
 * [Feature Highlights](#feature-highlights)
     * [Debug compile phases](#debug-compile-phases)
     * [Error reporting](#error-reporting)
@@ -38,20 +38,23 @@ API.
 > yet supported. Additionally, the runtime does not yet provide a garbage
 > collection service. See the issues tab for the list of work items.
 
-## Quick Start
+## Quick Start (Ubuntu)
+
+[Install Rust](https://rust-lang.org/tools/install/) and LLVM (`sudo apt
+install llvm`), then:
 
 ```sh
-cargo install oonta
+cargo install oonta # installs the oonta command
+wget https://github.com/fuad1502/oonta/releases/download/v0.2.0/liboonta_runtime-0.2.0-Linux.deb
+sudo dpkg -i liboonta_runtime-0.2.0-Linux.deb # installs oonta runtime library
 cat << EOF > main.ml
 let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
-let a = factorial 5
-let () = print_int a
+let () = print_int (factorial 5)
 EOF
 oonta --opt --exec main.ml
-./main.out
-# 120
+./main.out # prints `120`
 ```
-## Benchmark
+## Benchmark against `ocamlopt`
 
 Two benchmarks are provided:
 
@@ -163,8 +166,8 @@ python3 benchmark/benchmark.py 10000 0 # run the insertion_sort.ml benchmark on 
 ```
 
 > [!IMPORTANT] 
-> Currently, for running the benchmark on large inputs, we have to increase the
-> stack size limit with `ulimit -s unlimited`
+> Currently, for running the benchmark on large inputs, increase the stack size
+> limit with `ulimit -s unlimited`
 
 On my Ubuntu machine (AMD Ryzen™ 7 7700X × 16), with `ocamlopt` version 5.4.0
 and LLVM version 20.1.8, the result of running the above benchmarks are as
@@ -181,12 +184,19 @@ Elapsed time (./benchmark/ocamlopt.out): 0.1323 seconds
 Elapsed time (./benchmark/oonta.out): 0.3363 seconds
 > 2.54 times slower
 ```
+## User Guide
+
+```sh
+oonta --help
+```
 ## Dependencies
 
-The `oonta` command provides the `--opt, -O`, `--compile / -c` and `--exec /
--e` options to optimize the generated IR, compile the generated IR to an object
-code and executable, respectively. Internally, `oonta` will invoke the
-following commands:
+With no command line options given, the `oonta` command will simply generates
+LLVM IR without requiring any runtime dependencies. However, it provides
+`--opt, -O`, `--compile / -c` and `--exec / -e` options to optimize the
+generated IR, compile the generated IR to an object code and executable,
+respectively, which requires certain dependencies to function. Internally,
+`oonta` will invoke the following commands when given those options:
 
 ```sh
 # with --opt
@@ -196,21 +206,19 @@ llc -O3 -relocation-model=pic --filetype=obj -o <output> <.ll file>
 # with --exec
 clang -o <output> <.o file> -loonta_runtime
 ```
-On Ubuntu, install the `llvm` package to make those commands available.
+On Ubuntu, install the `llvm` package to make `opt`, `llc`, and `clang`
+available.
 
 ```sh
 sudo apt install llvm
 ```
-> [!NOTE]
-> I will be working on my own LLVM backend as part of my compiler learning
-> journey! ✨
-
 > [!WARNING]
 > The generated IR uses [opaque
-> pointers](https://llvm.org/docs/OpaquePointers.html). If your LLVM version is
-> older than version 15, the `--compile` / `--exec` options might not work. If
-> you're on Debian/Ubuntu, see [https://apt.llvm.org/](https://apt.llvm.org/)
-> for the installation instructions.
+> pointers](https://llvm.org/docs/OpaquePointers.html). If the LLVM version is
+> older than version 15, the `--opt / --compile` / `--exec` options might not
+> work. If you're on Debian/Ubuntu, see
+> [https://apt.llvm.org/](https://apt.llvm.org/) for instructions on installing
+> other versions.
 
 Additionally, with `--exec`, you need the *Oonta runtime library*:
 `liboonta_runtime.a`. If you're running an x64 linux machine, you can obtain
@@ -220,14 +228,9 @@ build the runtime from source by following the guide
 [below](#building-from-source).
 
 > [!NOTE]
-> Currently the runtime only provides allocation requests using *bump
+> Currently the runtime only provides memory allocation requests using *bump
 > allocation*. Garbage collection service is not yet available.
 
-## User Guide
-
-```sh
-oonta --help
-```
 ## Feature Highlights
 
 ### Debug compile phases
@@ -333,12 +336,12 @@ Error: cannot bind expression of type int to ()
 ```
 sudo apt install build-essential cmake
 ```
-2. Install `cargo` tool:
+2. Install `cargo` tool
 
 ```sh
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
-3. Clone repository.
+3. Clone repository
 
 ```sh
 git clone https://github.com/fuad1502/oonta.git
@@ -354,7 +357,7 @@ cmake --build build
 ```
 sudo cmake --install build
 ```
-6. Build `oonta`.
+6. Build `oonta`
 
 ```sh
 cargo build
