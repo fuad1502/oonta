@@ -192,7 +192,9 @@ sudo apt install llvm
 > [!WARNING]
 > The generated IR uses [opaque
 > pointers](https://llvm.org/docs/OpaquePointers.html). If your LLVM version is
-> older than version 15, the `--compile` / `--exec` options might not work.
+> older than version 15, the `--compile` / `--exec` options might not work. If
+> you're on Debian/Ubuntu, see [https://apt.llvm.org/](https://apt.llvm.org/)
+> for the installation instructions.
 
 Additionally, with `--exec`, you need the *Oonta runtime library*:
 `liboonta_runtime.a`. If you're running an x64 linux machine, you can obtain
