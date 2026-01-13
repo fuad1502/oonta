@@ -69,9 +69,9 @@ def main():
     ref_time = benchmark("./benchmark/ocamlopt.out")
     time = benchmark("./benchmark/oonta.out")
     if time > ref_time:
-        print(f"> {time/ref_time:.2f} times slower")
+        print(f"> {time/ref_time*100:.2f}% slower")
     else:
-        print(f"> {ref_time/time:.2f} times faster")
+        print(f"> {100-time/ref_time*100:.2f}% faster")
 
 if __name__ == "__main__":
     main()

@@ -175,14 +175,14 @@ follows:
 
 ```text
 Benchmarking: merge_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.8710 seconds
-Elapsed time (./benchmark/oonta.out): 0.7323 seconds
-> 1.19 times faster
+Elapsed time (./benchmark/ocamlopt.out): 0.8747 seconds
+Elapsed time (./benchmark/oonta.out): 0.7445 seconds
+> 14.88% faster
 
 Benchmarking: insertion_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.1323 seconds
-Elapsed time (./benchmark/oonta.out): 0.3363 seconds
-> 2.54 times slower
+Elapsed time (./benchmark/ocamlopt.out): 0.1325 seconds
+Elapsed time (./benchmark/oonta.out): 0.3481 seconds
+> 262.68% slower
 ```
 ## User Guide
 
