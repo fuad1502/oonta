@@ -1,6 +1,22 @@
+[<img alt="crates.io" src="https://img.shields.io/crates/v/oonta.svg">](https://crates.io/crates/oonta)
+[![CI](https://github.com/fuad1502/oonta/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/oonta/actions/workflows/CI.yml)
+
 ![Oonta: OCaml to LLVM IR Compiler](assets/banner.png)
 
-[![CI](https://github.com/fuad1502/oonta/actions/workflows/CI.yml/badge.svg)](https://github.com/fuad1502/oonta/actions/workflows/CI.yml)
+## Table of Contents
+
+* [Introduction](#introduction)
+* [Quick Start](#quick-start)
+* [Benchmark](#benchmark)
+* [Dependencies](#dependencies)
+* [User Guide](#user-guide)
+* [Feature Highlights](#feature-highlights)
+    * [Debug compile phases](#debug-compile-phases)
+    * [Error reporting](#error-reporting)
+* [Building from source](#building-from-source)
+* [Why is it called Oonta?](#why-is-it-called-oonta)
+
+## Introduction
 
 *Oonta* is a compiler front-end for the [OCaml programming
 language](https://ocaml.org): it generates [LLVM intermediate representation
@@ -11,16 +27,16 @@ language](https://ocaml.org): it generates [LLVM intermediate representation
 and lexing stages. For building the IR, *Oonta* does not depend on the LLVM
 API.
 
+> [!NOTE]
+> This project is part of the ["Compiler
+> Toys"](https://github.com/fuad1502/compiler_toys) project, originally meant
+> as a learning exercise on Compilers.
+
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
 > supported. For example, polymorphic functions and types, and modules are not
 > yet supported. Additionally, the runtime does not yet provide a garbage
 > collection service. See the issues tab for the list of work items.
-
-> [!NOTE]
-> This project is part of the ["Compiler
-> Toys"](https://github.com/fuad1502/compiler_toys) project, originally meant
-> as a learning exercise on Compilers.
 
 ## Quick Start
 
