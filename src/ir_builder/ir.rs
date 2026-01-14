@@ -1,5 +1,5 @@
 use core::fmt::Formatter;
-use std::{collections::HashMap, io::Write};
+use std::{cell::RefCell, collections::HashMap, io::Write, rc::Rc};
 
 use crate::{
     ast::Operator,
@@ -207,13 +207,9 @@ impl Function {
         fun
     }
 
-    pub fn from_typ(name: String, param_names: Vec<String>, typ: Type) -> Self {
-        if let Type::Fun(typs) = typ {
-            let mut ir_typs = typs
-                .into_iter()
-                .map(normalize_typ)
-                .map(|t| IRType::from(&t))
-                .collect::<Vec<IRType>>();
+    pub fn from_typ(name: String, param_names: Vec<String>, typ: Rc<RefCell<Type>>) -> Self {
+        if let Type::Fun(typs) = normalize_typ(typ) {
+            let mut ir_typs = typs.into_iter().map(IRType::from).collect::<Vec<IRType>>();
             let ret_typ = ir_typs.pop().unwrap();
             let params = ir_typs
                 .into_iter()
@@ -673,9 +669,9 @@ impl IRType {
     }
 }
 
-impl From<&Type> for IRType {
-    fn from(typ: &Type) -> Self {
-        match typ {
+impl From<Rc<RefCell<Type>>> for IRType {
+    fn from(typ: Rc<RefCell<Type>>) -> Self {
+        match normalize_typ(typ) {
             Type::Fun(_) | Type::Tuple(_) | Type::Custom(_) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
             Type::Primitive(Primitive::Bool) => IRType::I1,

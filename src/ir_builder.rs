@@ -9,7 +9,7 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
-    typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs, normalize_typ},
+    typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs},
 };
 
 pub mod ir;
@@ -194,14 +194,14 @@ impl<'a> IRBuilder<'a> {
     ) -> IRValue {
         let mut fun_typs = {
             let fun_expr_ptr = &*application_expr.fun.borrow() as *const Expr;
-            let fun_typ = normalize_typ(self.type_map.get(fun_expr_ptr).unwrap());
+            let fun_typ = self.type_map.get(fun_expr_ptr).unwrap();
             extract_fun_typs(fun_typ).unwrap()
         };
 
         let num_of_remainding_args = fun_typs.len() - 1 - application_expr.binds.len();
         if num_of_remainding_args > 0 {
             let fun_typs = fun_typs.split_off(application_expr.binds.len());
-            let ret_typ = normalize_typ(fun_typs.last().unwrap().clone());
+            let ret_typ = fun_typs.last().unwrap().clone();
             return self.visit_partial_application_expr(
                 application_expr,
                 num_of_remainding_args,
@@ -235,7 +235,7 @@ impl<'a> IRBuilder<'a> {
         application_expr: &ApplicationExpr,
         num_of_remainding_args: usize,
         dispatch_fun_typs: Vec<Rc<RefCell<Type>>>,
-        dispatch_ret_typ: Type,
+        dispatch_ret_typ: Rc<RefCell<Type>>,
     ) -> IRValue {
         // 1. Create function
         let dispatch_fun_name = self.new_anon_fun_name();
@@ -243,7 +243,7 @@ impl<'a> IRBuilder<'a> {
         let mut dispatch_fun = Function::from_typ(
             dispatch_fun_name.clone(),
             dispath_param_names.clone(),
-            Type::Fun(dispatch_fun_typs),
+            Rc::new(RefCell::new(Type::Fun(dispatch_fun_typs))),
         );
         dispatch_fun.add_param(("env".to_string(), IRType::Ptr));
 
@@ -322,7 +322,7 @@ impl<'a> IRBuilder<'a> {
 
         // > call fun with args
         let fun = self.curr_fun().load(IRType::Ptr, closure);
-        let res_typ = IRType::from(&dispatch_ret_typ);
+        let res_typ = IRType::from(dispatch_ret_typ);
         let res = self.curr_fun().fast_call(fun, res_typ, args);
         self.curr_fun().ret(res);
 
@@ -509,17 +509,19 @@ impl<'a> IRBuilder<'a> {
         value
     }
 
-    fn gather_conds(&mut self, pattern: &Pattern, typ: Type, value: IRValue) -> Vec<IRValue> {
+    fn gather_conds(
+        &mut self,
+        pattern: &Pattern,
+        typ: Rc<RefCell<Type>>,
+        value: IRValue,
+    ) -> Vec<IRValue> {
         // TODO: Refactor
         match pattern {
             Pattern::Tuple(elements) => {
                 let mut conditions = vec![];
-                let element_typs: Vec<Type> = extract_tuple_typs(typ)
-                    .unwrap()
-                    .into_iter()
-                    .map(normalize_typ)
-                    .collect();
-                let element_ir_typs = element_typs.iter().map(IRType::from).collect();
+                let element_typs: Vec<Rc<RefCell<Type>>> =
+                    extract_tuple_typs(typ).unwrap().into_iter().collect();
+                let element_ir_typs = element_typs.iter().cloned().map(IRType::from).collect();
                 let pattern_type = IRType::Struct(element_ir_typs);
                 for (i, (element, element_typ)) in elements.iter().zip(element_typs).enumerate() {
                     if !element.has_literal() {
@@ -530,7 +532,7 @@ impl<'a> IRBuilder<'a> {
                         value.clone(),
                         &[0, i as i32],
                     );
-                    let element_type = IRType::from(&element_typ);
+                    let element_type = IRType::from(element_typ.clone());
                     let element_value = self.curr_fun().load(element_type, ptr);
                     let mut new_conditions = self.gather_conds(element, element_typ, element_value);
                     conditions.append(&mut new_conditions);
@@ -557,8 +559,7 @@ impl<'a> IRBuilder<'a> {
                     && patt.has_literal()
                 {
                     let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
-                    let typ = normalize_typ(typ);
-                    let ir_typ = IRType::from(&typ);
+                    let ir_typ = IRType::from(typ.clone());
                     let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
                     let value = self.curr_fun().load(ir_typ, ptr);
                     conditions.append(&mut self.gather_conds(patt, typ, value));
@@ -579,19 +580,16 @@ impl<'a> IRBuilder<'a> {
     fn gather_binds(
         &mut self,
         pattern: &Pattern,
-        typ: Type,
+        typ: Rc<RefCell<Type>>,
         value: IRValue,
     ) -> Vec<(String, IRValue)> {
         // TODO: Refactor
         match pattern {
             Pattern::Tuple(elements) => {
                 let mut bindings = vec![];
-                let element_typs: Vec<Type> = extract_tuple_typs(typ)
-                    .unwrap()
-                    .into_iter()
-                    .map(normalize_typ)
-                    .collect();
-                let element_ir_typs = element_typs.iter().map(IRType::from).collect();
+                let element_typs: Vec<Rc<RefCell<Type>>> =
+                    extract_tuple_typs(typ).unwrap().into_iter().collect();
+                let element_ir_typs = element_typs.iter().cloned().map(IRType::from).collect();
                 let pattern_type = IRType::Struct(element_ir_typs);
                 for (i, (element, element_typ)) in elements.iter().zip(element_typs).enumerate() {
                     if !element.has_identifier() {
@@ -602,7 +600,7 @@ impl<'a> IRBuilder<'a> {
                         value.clone(),
                         &[0, i as i32],
                     );
-                    let element_type = IRType::from(&element_typ);
+                    let element_type = IRType::from(element_typ.clone());
                     let element_value = self.curr_fun().load(element_type, ptr);
                     let mut new_bindings = self.gather_binds(element, element_typ, element_value);
                     bindings.append(&mut new_bindings);
@@ -612,8 +610,7 @@ impl<'a> IRBuilder<'a> {
             Pattern::Constructor(span, Some(pattern)) => {
                 let ctor_name = self.lexer.str_from_span(span);
                 let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
-                let typ = normalize_typ(typ);
-                let ir_typ = IRType::from(&typ);
+                let ir_typ = IRType::from(typ.clone());
                 let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
                 let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
                 let value = self.curr_fun().load(ir_typ, ptr);
@@ -719,14 +716,11 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn get_ir_typ(&self, expr_ptr: *const Expr) -> IRType {
-        IRType::from(&self.get_typ(expr_ptr))
+        IRType::from(self.get_typ(expr_ptr))
     }
 
-    fn get_typ(&self, expr_ptr: *const Expr) -> Type {
-        self.type_map
-            .get(expr_ptr)
-            .map(normalize_typ)
-            .expect("Expr not in type_map")
+    fn get_typ(&self, expr_ptr: *const Expr) -> Rc<RefCell<Type>> {
+        self.type_map.get(expr_ptr).expect("Expr not in type_map")
     }
 
     fn curr_fun(&mut self) -> &mut Function {

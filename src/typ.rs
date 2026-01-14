@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 use core::fmt::Formatter;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
 use crate::ast::{CondExpr, ConstructExpr, Pattern, PatternMatchExpr, TupleExpr};
@@ -359,11 +359,14 @@ impl<'a> TypeResolver<'a> {
     }
 
     fn instantiate_typ(&mut self, typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
-        match typ.borrow().clone() {
+        match &*typ.borrow() {
             Type::Primitive(_) | Type::Custom(_) => typ.clone(),
-            Type::Variable(Variable::Link(typ)) => self.instantiate_typ(typ),
+            Type::Variable(Variable::Link(typ)) => self.instantiate_typ(typ.clone()),
             Type::Fun(typs) => {
-                let typs = typs.into_iter().map(|t| self.instantiate_typ(t)).collect();
+                let typs = typs
+                    .iter()
+                    .map(|t| self.instantiate_typ(t.clone()))
+                    .collect();
                 Rc::new(RefCell::new(Type::Fun(typs)))
             }
             Type::Variable(Variable::Unbound(i)) => {
@@ -372,7 +375,10 @@ impl<'a> TypeResolver<'a> {
                 Rc::new(RefCell::new(inst_typ))
             }
             Type::Tuple(typs) => {
-                let typs = typs.into_iter().map(|t| self.instantiate_typ(t)).collect();
+                let typs = typs
+                    .iter()
+                    .map(|t| self.instantiate_typ(t.clone()))
+                    .collect();
                 Rc::new(RefCell::new(Type::Tuple(typs)))
             }
         }
@@ -493,8 +499,8 @@ impl<'a> TypeResolver<'a> {
 }
 
 fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) -> Result<(), Error> {
-    let unboxed_a = (typ_a.borrow()).clone();
-    let unboxed_b = (typ_b.borrow()).clone();
+    let unboxed_a = typ_a.borrow().clone();
+    let unboxed_b = typ_b.borrow().clone();
     match (unboxed_a, unboxed_b) {
         (Type::Variable(Variable::Link(typ)), _) => unify_typ(typ, typ_b),
         (_, Type::Variable(Variable::Link(typ))) => unify_typ(typ_a, typ),
@@ -543,64 +549,53 @@ fn bind(from: Rc<RefCell<Type>>, to: Rc<RefCell<Type>>) {
 
 fn rename(typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
     let unbounds = gather_unbounds(typ.clone());
-    for (i, unbound) in unbounds.iter().enumerate() {
-        *unbound.borrow_mut() = Type::Variable(Variable::Unbound(i));
+    let mut renamed_unbounds: HashSet<*const RefCell<Type>> = HashSet::new();
+    let mut last_unbound_var = 0;
+    for unbound in &unbounds {
+        let ptr = Rc::as_ptr(unbound);
+        if !renamed_unbounds.contains(&ptr) {
+            *unbound.borrow_mut() = Type::Variable(Variable::Unbound(last_unbound_var));
+            renamed_unbounds.insert(ptr);
+            last_unbound_var += 1;
+        }
     }
     typ
 }
 
 fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
-    match typ.borrow().clone() {
+    match &*typ.borrow() {
         Type::Fun(typs) | Type::Tuple(typs) => {
             let mut unbounds = vec![];
             for typ in typs {
-                unbounds.append(&mut gather_unbounds(typ));
+                unbounds.append(&mut gather_unbounds(typ.clone()));
             }
             unbounds
         }
         Type::Variable(Variable::Unbound(_)) => vec![typ.clone()],
-        Type::Primitive(_) | Type::Custom(_) | Type::Variable(Variable::Link(_)) => vec![],
+        Type::Variable(Variable::Link(to)) => gather_unbounds(to.clone()),
+        Type::Primitive(_) | Type::Custom(_) => vec![],
     }
 }
 
 pub fn normalize_typ(typ: Rc<RefCell<Type>>) -> Type {
     let typ = typ.borrow().clone();
     match typ {
-        Type::Fun(typs) => {
-            let typs = typs
-                .into_iter()
-                .map(normalize_typ)
-                .map(RefCell::new)
-                .map(Rc::new)
-                .collect();
-            Type::Fun(typs)
-        }
-        Type::Tuple(typs) => {
-            let typs = typs
-                .into_iter()
-                .map(normalize_typ)
-                .map(RefCell::new)
-                .map(Rc::new)
-                .collect();
-            Type::Tuple(typs)
-        }
-        Type::Primitive(_) | Type::Custom(_) => typ,
         Type::Variable(Variable::Link(typ)) => normalize_typ(typ),
-        Type::Variable(Variable::Unbound(_)) => typ,
+        _ => typ,
     }
 }
 
-pub fn extract_fun_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
-    if let Type::Fun(typs) = typ {
-        Some(typs)
+pub fn extract_fun_typs(typ: Rc<RefCell<Type>>) -> Option<Vec<Rc<RefCell<Type>>>> {
+    if let Type::Fun(typs) = normalize_typ(typ) {
+        Some(typs.clone())
     } else {
         None
     }
 }
 
-pub fn extract_tuple_typs(typ: Type) -> Option<Vec<Rc<RefCell<Type>>>> {
-    if let Type::Tuple(typs) = typ {
-        Some(typs)
+pub fn extract_tuple_typs(typ: Rc<RefCell<Type>>) -> Option<Vec<Rc<RefCell<Type>>>> {
+    if let Type::Tuple(typs) = normalize_typ(typ) {
+        Some(typs.clone())
     } else {
         None
     }
@@ -734,9 +729,9 @@ impl Error {
 }
 
 fn does_returns_fun(typ: Rc<RefCell<Type>>) -> bool {
-    if let Type::Fun(typs) = normalize_typ(typ) {
+    if let Type::Fun(typs) = &*typ.borrow() {
         let ret_typ = typs.last().unwrap();
-        matches!(normalize_typ(ret_typ.clone()), Type::Fun(_))
+        matches!(&*ret_typ.borrow(), Type::Fun(_))
     } else {
         false
     }
