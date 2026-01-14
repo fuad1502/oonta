@@ -269,7 +269,8 @@ impl<'a> TypeResolver<'a> {
         if let Some(typ) = self.get_from_local_ctx(name) {
             Ok(typ)
         } else if let Some(typ) = self.get_from_main_context(name) {
-            Ok(self.instantiate_typ(typ))
+            let mut unbound_typ_map = HashMap::new();
+            Ok(self.instantiate_typ(typ, &mut unbound_typ_map))
         } else {
             Err(Error::UnboundVariable(id.clone()))
         }
@@ -356,28 +357,40 @@ impl<'a> TypeResolver<'a> {
         self.main_context.borrow().get(name)
     }
 
-    fn instantiate_typ(&mut self, typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    fn instantiate_typ(
+        &mut self,
+        typ: Rc<RefCell<Type>>,
+        unbound_typ_map: &mut HashMap<usize, Rc<RefCell<Type>>>,
+    ) -> Rc<RefCell<Type>> {
         match &*typ.borrow() {
             Type::Primitive(_) | Type::Custom(_) => typ.clone(),
-            Type::Variable(Variable::Link(typ)) => self.instantiate_typ(typ.clone()),
+            Type::Variable(Variable::Link(typ)) => {
+                self.instantiate_typ(typ.clone(), unbound_typ_map)
+            }
             Type::Fun(typs) => {
                 let typs = typs
                     .iter()
-                    .map(|t| self.instantiate_typ(t.clone()))
+                    .map(|t| self.instantiate_typ(t.clone(), unbound_typ_map))
                     .collect();
                 Rc::new(RefCell::new(Type::Fun(typs)))
-            }
-            Type::Variable(Variable::Unbound(i)) => {
-                let inst_typ = Type::Variable(Variable::Unbound(i + self.var_id_in_local_ctx));
-                self.var_id_in_local_ctx += 1;
-                Rc::new(RefCell::new(inst_typ))
             }
             Type::Tuple(typs) => {
                 let typs = typs
                     .iter()
-                    .map(|t| self.instantiate_typ(t.clone()))
+                    .map(|t| self.instantiate_typ(t.clone(), unbound_typ_map))
                     .collect();
                 Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
+            Type::Variable(Variable::Unbound(i)) => {
+                if let Some(typ) = unbound_typ_map.get(i) {
+                    typ.clone()
+                } else {
+                    let typ = Type::Variable(Variable::Unbound(i + self.var_id_in_local_ctx));
+                    let typ = Rc::new(RefCell::new(typ));
+                    self.var_id_in_local_ctx += 1;
+                    unbound_typ_map.insert(*i, typ.clone());
+                    typ
+                }
             }
         }
     }
