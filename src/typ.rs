@@ -293,12 +293,10 @@ impl<'a> TypeResolver<'a> {
             | crate::ast::Operator::Lt
             | crate::ast::Operator::Gte
             | crate::ast::Operator::Gt => {
-                let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Integer)));
                 let bool_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Bool)));
-                let typ = self.infer_type(&bin_op_expr.lhs.borrow())?;
-                unify_typ(typ, int_typ.clone())?;
-                let typ = self.infer_type(&bin_op_expr.rhs.borrow())?;
-                unify_typ(typ, int_typ.clone())?;
+                let lhs = self.infer_type(&bin_op_expr.lhs.borrow())?;
+                let rhs = self.infer_type(&bin_op_expr.rhs.borrow())?;
+                unify_typ(lhs, rhs)?;
                 Ok(bool_typ)
             }
         }
@@ -847,6 +845,11 @@ mod test {
     #[test]
     fn unit_let_in() {
         assert_type_of_last_bind("let f g x = let () = g x in x", "(('a -> ()) -> 'a -> 'a)");
+    }
+
+    #[test]
+    fn polymorphic_compare() {
+        assert_type_of_last_bind("let f x y = x < y", "('a -> 'a -> bool)");
     }
 
     #[test]
