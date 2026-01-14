@@ -5,6 +5,7 @@ pub mod cmd;
 mod custom_types;
 pub mod driver;
 mod ir_builder;
+mod monomorphization_pass;
 pub mod terminal_colors;
 mod typ;
 

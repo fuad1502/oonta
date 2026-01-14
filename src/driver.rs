@@ -13,6 +13,7 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
+    monomorphization_pass::monomorphize,
     parser::Parser,
     symbol::Symbol,
     terminal_colors::{BLUE, END, GREEN, RED, YELLOW},
@@ -91,6 +92,10 @@ impl Driver {
 
         self.dbg_start("Transform application expressions");
         transform_applications(&ast, &mut type_map, &lexer, self.debug_phases);
+        self.dbg_end();
+
+        self.dbg_start("Monomorphization");
+        monomorphize(&ast, &mut type_map, &lexer, self.debug_phases);
         self.dbg_end();
 
         self.dbg_start("Build LLVM module");

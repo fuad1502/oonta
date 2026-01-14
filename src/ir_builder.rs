@@ -218,7 +218,7 @@ impl<'a> IRBuilder<'a> {
             .collect::<Vec<IRValue>>();
         let closure = self.visit_expr(&application_expr.fun.borrow());
         args.push(closure.clone());
-        let fun = if let Expr::Var(VarExpr { id }) = &*application_expr.fun.borrow()
+        let fun = if let Expr::Var(VarExpr { id, .. }) = &*application_expr.fun.borrow()
             && let Some(recursive_name) = self.get_ctx_recursive_bind()
             && self.lexer.str_from_span(id) == recursive_name
         {

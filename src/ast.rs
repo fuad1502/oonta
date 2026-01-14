@@ -32,13 +32,16 @@ pub enum Expr {
     Tuple(TupleExpr),
 }
 
+#[derive(Clone)]
 pub enum LiteralExpr {
     Integer(i64, Span),
     Unit(Span),
 }
 
+#[derive(Clone)]
 pub struct VarExpr {
     pub id: Span,
+    pub poly_args: Option<String>,
 }
 
 pub struct FunExpr {
@@ -87,6 +90,7 @@ pub struct PatternMatchExpr {
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub enum Pattern {
     Tuple(Vec<Pattern>),
     Constructor(Span, Option<Box<Pattern>>),
@@ -132,7 +136,7 @@ impl Expr {
         match self {
             Expr::Literal(LiteralExpr::Integer(_, span)) => span,
             Expr::Literal(LiteralExpr::Unit(span)) => span,
-            Expr::Var(VarExpr { id }) => id,
+            Expr::Var(VarExpr { id, .. }) => id,
             Expr::Fun(FunExpr { span, .. }) => span,
             Expr::Application(ApplicationExpr { span, .. }) => span,
             Expr::LetIn(LetInExpr { span, .. }) => span,
@@ -145,7 +149,10 @@ impl Expr {
     }
 
     pub fn var(span: Span) -> Self {
-        Self::Var(VarExpr { id: span })
+        Self::Var(VarExpr {
+            id: span,
+            poly_args: None,
+        })
     }
 
     pub fn fun(
