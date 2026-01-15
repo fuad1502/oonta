@@ -325,6 +325,26 @@ mod test {
         exec("polymorphic", "2");
     }
 
+    #[test]
+    fn ll_comparison() {
+        ll("comparison", false);
+    }
+
+    #[test]
+    fn ll_opt_comparison() {
+        ll("comparison", true);
+    }
+
+    #[test]
+    fn obj_comparison() {
+        obj("comparison");
+    }
+
+    #[test]
+    fn exec_comparison() {
+        exec("comparison", "1100111");
+    }
+
     fn ll(test_name: &str, opt: bool) {
         let (options, out_path) = if opt {
             let options = vec![CompileOptions::OptimizeIR];

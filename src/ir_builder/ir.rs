@@ -78,6 +78,7 @@ pub enum InstrClass {
     Mul(IRType, IRValue, IRValue),
     Div(IRType, IRValue, IRValue),
     Eq(IRType, IRValue, IRValue),
+    Neq(IRType, IRValue, IRValue),
     Lte(IRType, IRValue, IRValue),
     Lt(IRType, IRValue, IRValue),
     Gte(IRType, IRValue, IRValue),
@@ -375,6 +376,7 @@ impl Function {
             Operator::Star => InstrClass::Mul(op_typ, lhs, rhs),
             Operator::Slash => InstrClass::Div(op_typ, lhs, rhs),
             Operator::Eq => InstrClass::Eq(op_typ, lhs, rhs),
+            Operator::Neq => InstrClass::Neq(op_typ, lhs, rhs),
             Operator::Lte => InstrClass::Lte(op_typ, lhs, rhs),
             Operator::Lt => InstrClass::Lt(op_typ, lhs, rhs),
             Operator::Gte => InstrClass::Gte(op_typ, lhs, rhs),
@@ -572,6 +574,9 @@ impl std::fmt::Display for InstrClass {
             }
             InstrClass::Eq(irtype, lhs, rhs) => {
                 write!(fmt, "icmp eq {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Neq(irtype, lhs, rhs) => {
+                write!(fmt, "icmp ne {irtype} {}, {}", lhs.name(), rhs.name())
             }
             InstrClass::Lte(irtype, lhs, rhs) => {
                 write!(fmt, "icmp sle {irtype} {}, {}", lhs.name(), rhs.name())

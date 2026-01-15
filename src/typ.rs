@@ -290,6 +290,7 @@ impl<'a> TypeResolver<'a> {
                 Ok(int_typ)
             }
             crate::ast::Operator::Eq
+            | crate::ast::Operator::Neq
             | crate::ast::Operator::Lte
             | crate::ast::Operator::Lt
             | crate::ast::Operator::Gte

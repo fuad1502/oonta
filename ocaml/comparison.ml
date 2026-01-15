@@ -1,0 +1,10 @@
+let print_bool b = if b then print_int 1 else print_int 0
+let a = (1, (2, 4))
+let b = (1, (1, 4))
+let () = print_bool (a > b)
+let () = print_bool (a >= b)
+let () = print_bool (a < b)
+let () = print_bool (a <= b)
+let () = print_bool (a <= a)
+let () = print_bool (a >= a)
+let () = print_bool (a = a)

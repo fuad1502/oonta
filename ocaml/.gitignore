@@ -3,3 +3,4 @@
 *.out
 *.cmi
 *.cmo
+*.cmx

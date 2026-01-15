@@ -10,7 +10,10 @@ use crate::{
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
     monomorphization_pass::MonoExprs,
-    typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs, is_polymorphic},
+    typ::{
+        Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, is_polymorphic,
+        normalize_typ,
+    },
 };
 
 pub mod ir;
@@ -508,14 +511,148 @@ impl<'a> IRBuilder<'a> {
     fn visit_bin_op_expr(&mut self, bin_op_expr: &BinOpExpr, expr_ptr: *const Expr) -> IRValue {
         let lhs = self.visit_expr(&bin_op_expr.lhs.borrow());
         let rhs = self.visit_expr(&bin_op_expr.rhs.borrow());
-        let typ = self.get_ir_typ(expr_ptr);
-        self.curr_fun().binop(typ, lhs, rhs, bin_op_expr.op)
+        match bin_op_expr.op {
+            Operator::Plus | Operator::Minus | Operator::Star | Operator::Slash => {
+                let typ = self.get_ir_typ(expr_ptr);
+                self.curr_fun().binop(typ, lhs, rhs, bin_op_expr.op)
+            }
+            Operator::Eq
+            | Operator::Neq
+            | Operator::Lte
+            | Operator::Lt
+            | Operator::Gte
+            | Operator::Gt => {
+                let operand_typ = {
+                    let expr_ptr = &*bin_op_expr.lhs.borrow() as *const Expr;
+                    normalize_typ(self.get_typ(expr_ptr))
+                };
+                self.handle_comparison_operation(lhs, rhs, bin_op_expr.op, operand_typ)
+            }
+        }
     }
 
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {
         match literal_expr {
             LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I64(*value)),
             LiteralExpr::Unit(_) => IRValue::Void,
+        }
+    }
+
+    fn handle_comparison_operation(
+        &mut self,
+        lhs: IRValue,
+        rhs: IRValue,
+        operator: Operator,
+        operand_typ: Type,
+    ) -> IRValue {
+        match operand_typ {
+            Type::Tuple(typs) => self.handle_tuple_comparison(lhs, rhs, operator, typs),
+            Type::Custom(name) => self.handle_variant_comparison(lhs, rhs, operator, name),
+            Type::Primitive(Primitive::Integer) | Type::Primitive(Primitive::Bool) => {
+                self.curr_fun().binop(IRType::I1, lhs, rhs, operator)
+            }
+            Type::Primitive(Primitive::Unit) => self.handle_unit_comparison(operator),
+            Type::Fun(_) => panic!("Cannot compare functions"),
+            Type::Variable(_) => unreachable!(),
+        }
+    }
+
+    fn handle_tuple_comparison(
+        &mut self,
+        lhs: IRValue,
+        rhs: IRValue,
+        operator: Operator,
+        typs: Vec<Rc<RefCell<Type>>>,
+    ) -> IRValue {
+        let res_ptr = self.curr_fun().alloca(IRType::I1);
+        self.curr_fun()
+            .store(IRValue::Pri(IRPri::I1(false)), res_ptr.clone());
+        let exit_bb = self.curr_fun().create_bb("exit");
+        let exit_label = exit_bb.label().to_string();
+        let true_bb = self.curr_fun().create_bb("true");
+        let true_label = true_bb.label().to_string();
+        let tuple_typ = IRType::Struct(typs.iter().map(|t| IRType::from(t.clone())).collect());
+        for (i, typ) in typs.iter().enumerate() {
+            // 1. Load elements
+            let ptr = self
+                .curr_fun()
+                .getelemptr(tuple_typ.clone(), lhs.clone(), &[0, i as i32]);
+            let lhs = self.curr_fun().load(IRType::from(typ.clone()), ptr);
+            let ptr = self
+                .curr_fun()
+                .getelemptr(tuple_typ.clone(), rhs.clone(), &[0, i as i32]);
+            let rhs = self.curr_fun().load(IRType::from(typ.clone()), ptr);
+            let operand_typ = normalize_typ(typ.clone());
+
+            if i != typs.len() - 1 {
+                // 2. Check if certainly false
+                let operator = match operator {
+                    Operator::Eq => Operator::Neq,
+                    Operator::Neq => Operator::Eq,
+                    Operator::Lte | Operator::Lt => Operator::Gt,
+                    Operator::Gte | Operator::Gt => Operator::Lt,
+                    _ => unreachable!(),
+                };
+                let cond = self.handle_comparison_operation(
+                    lhs.clone(),
+                    rhs.clone(),
+                    operator,
+                    operand_typ.clone(),
+                );
+
+                // 3. Early break
+                let follow_label = self.curr_fun().add_new_bb("follow");
+                self.curr_fun()
+                    .cond_brk(cond, exit_label.clone(), follow_label.clone());
+                self.curr_fun().set_bb(follow_label);
+
+                if operator != Operator::Eq && operator != Operator::Neq {
+                    // 4. Check is certainly true
+                    let cond =
+                        self.handle_comparison_operation(lhs, rhs, Operator::Eq, operand_typ);
+
+                    // 5. Early break
+                    let follow_label = self.curr_fun().add_new_bb("follow");
+                    self.curr_fun()
+                        .cond_brk(cond, follow_label.clone(), true_label.clone());
+                    self.curr_fun().set_bb(follow_label);
+                }
+            } else {
+                // 2. Compare elements
+                let cond = self.handle_comparison_operation(lhs, rhs, operator, operand_typ);
+                self.curr_fun()
+                    .cond_brk(cond, true_label.clone(), exit_label.clone());
+
+                // 3. True BB
+                self.curr_fun().add_bb(true_bb);
+                self.curr_fun().set_bb(true_label.clone());
+                self.curr_fun()
+                    .store(IRValue::Pri(IRPri::I1(true)), res_ptr.clone());
+                self.curr_fun().brk(exit_label.clone());
+                break;
+            }
+        }
+
+        self.curr_fun().add_bb(exit_bb);
+        self.curr_fun().set_bb(exit_label);
+        self.curr_fun().load(IRType::I1, res_ptr)
+    }
+
+    fn handle_variant_comparison(
+        &mut self,
+        _lhs: IRValue,
+        _rhs: IRValue,
+        _operator: Operator,
+        _typ_name: String,
+    ) -> IRValue {
+        todo!()
+    }
+
+    fn handle_unit_comparison(&mut self, operator: Operator) -> IRValue {
+        match operator {
+            Operator::Eq | Operator::Lte | Operator::Gte => IRValue::Pri(IRPri::I1(true)),
+            Operator::Lt | Operator::Gt => IRValue::Pri(IRPri::I1(false)),
+            _ => unreachable!(),
         }
     }
 

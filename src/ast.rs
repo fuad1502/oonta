@@ -104,13 +104,14 @@ pub struct TupleExpr {
     pub span: Span,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum Operator {
     Plus,
     Minus,
     Star,
     Slash,
     Eq,
+    Neq,
     Lte,
     Lt,
     Gte,
@@ -236,6 +237,7 @@ impl std::fmt::Display for Operator {
             Operator::Star => write!(f, "*"),
             Operator::Slash => write!(f, "/"),
             Operator::Eq => write!(f, "="),
+            Operator::Neq => write!(f, "<>"),
             Operator::Lte => write!(f, "<="),
             Operator::Lt => write!(f, "<"),
             Operator::Gte => write!(f, ">="),
