@@ -622,6 +622,16 @@ pub fn is_polymorphic(typ: Rc<RefCell<Type>>) -> bool {
     }
 }
 
+pub fn poly_arg_str(typ: &Rc<RefCell<Type>>) -> String {
+    typ.borrow()
+        .to_string()
+        .replace(" ", "")
+        .replace("(", "$l")
+        .replace(")", "$r")
+        .replace("*", "$s")
+        .replace("->", "$a")
+}
+
 impl std::fmt::Display for Type {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
@@ -657,7 +667,7 @@ impl std::fmt::Display for Type {
             Type::Primitive(primitive) => match primitive {
                 Primitive::Integer => write!(fmt, "int"),
                 Primitive::Bool => write!(fmt, "bool"),
-                Primitive::Unit => write!(fmt, "()"),
+                Primitive::Unit => write!(fmt, "unit"),
             },
             Type::Custom(name) => write!(fmt, "{name}"),
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
@@ -852,7 +862,7 @@ mod test {
 
     #[test]
     fn unit_type() {
-        assert_type_of_last_bind("let x = ()", "()");
+        assert_type_of_last_bind("let x = ()", "unit");
     }
 
     #[test]
@@ -867,7 +877,10 @@ mod test {
 
     #[test]
     fn unit_let_in() {
-        assert_type_of_last_bind("let f g x = let () = g x in x", "(('a -> ()) -> 'a -> 'a)");
+        assert_type_of_last_bind(
+            "let f g x = let () = g x in x",
+            "(('a -> unit) -> 'a -> 'a)",
+        );
     }
 
     #[test]
