@@ -305,6 +305,26 @@ mod test {
         exec("merge_sort", "12345");
     }
 
+    #[test]
+    fn ll_polymorphic() {
+        ll("polymorphic", false);
+    }
+
+    #[test]
+    fn ll_opt_polymorphic() {
+        ll("polymorphic", true);
+    }
+
+    #[test]
+    fn obj_polymorphic() {
+        obj("polymorphic");
+    }
+
+    #[test]
+    fn exec_polymorphic() {
+        exec("polymorphic", "2");
+    }
+
     fn ll(test_name: &str, opt: bool) {
         let (options, out_path) = if opt {
             let options = vec![CompileOptions::OptimizeIR];
