@@ -13,7 +13,7 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
-    monomorphization_pass::monomorphize,
+    monomorphization_pass::{MonoExprs, monomorphize},
     parser::Parser,
     symbol::Symbol,
     terminal_colors::{BLUE, END, GREEN, RED, YELLOW},
@@ -95,11 +95,18 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Monomorphization");
-        monomorphize(&ast, &mut type_map, &lexer, self.debug_phases);
+        let mono_exprs = monomorphize(&ast, &mut type_map, &lexer, self.debug_phases);
         self.dbg_end();
 
         self.dbg_start("Build LLVM module");
-        let module = build_module(&ast, &type_map, &custom_types, &lexer, self.top_level);
+        let module = build_module(
+            &ast,
+            &mono_exprs,
+            &type_map,
+            &custom_types,
+            &lexer,
+            self.top_level,
+        );
         self.dbg_end();
 
         self.dbg_start("Write LLVM module");
@@ -178,13 +185,14 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
 
 fn build_module(
     ast: &Ast,
+    mono_exprs: &MonoExprs,
     type_map: &TypeMap,
     custom_types: &CustomTypes,
     lexer: &Lexer,
     is_top_level: bool,
 ) -> Module {
     let ir_builder = IRBuilder::new(type_map, custom_types, lexer, is_top_level);
-    ir_builder.build(ast)
+    ir_builder.build(ast, mono_exprs)
 }
 
 fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {

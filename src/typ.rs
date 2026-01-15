@@ -612,6 +612,16 @@ pub fn extract_tuple_typs(typ: Rc<RefCell<Type>>) -> Option<Vec<Rc<RefCell<Type>
     }
 }
 
+pub fn is_polymorphic(typ: Rc<RefCell<Type>>) -> bool {
+    match &*typ.borrow() {
+        Type::Fun(typs) | Type::Tuple(typs) => typs.iter().cloned().any(is_polymorphic),
+        Type::Variable(Variable::Link(typ)) => is_polymorphic(typ.clone()),
+        Type::Variable(Variable::Unbound(_)) => true,
+        Type::Custom(_) => false,
+        Type::Primitive(_) => false,
+    }
+}
+
 impl std::fmt::Display for Type {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {

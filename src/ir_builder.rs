@@ -3,13 +3,14 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+        ApplicationExpr, Ast, BinOpExpr, Bind, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
         LiteralExpr, Operator, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
     },
     custom_types::CustomTypes,
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
-    typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs},
+    monomorphization_pass::MonoExprs,
+    typ::{Type, TypeMap, extract_fun_typs, extract_tuple_typs, is_polymorphic},
 };
 
 pub mod ir;
@@ -56,30 +57,51 @@ impl<'a> IRBuilder<'a> {
         builder.populate_builtins()
     }
 
-    pub fn build(mut self, ast: &Ast) -> Module {
-        for binding in &ast.binds {
-            let expr_val = self.visit_expr(&binding.expr.borrow());
-            let ir_typ = expr_val.typ().clone();
-
-            // TODO: better void handling
-            match (&binding.name, ir_typ.is_void()) {
-                (Some(name), false) => {
-                    let name = self.lexer.str_from_span(name).to_string();
-                    self.module
-                        .new_global_var(name.clone(), ir_typ.clone(), None);
-                    let global_val = IRValue::Global(name.clone(), ir_typ);
-                    self.insert_name_to_ctx(name, global_val.clone());
-                    self.curr_fun().store(expr_val, global_val);
-                }
-                (Some(name), true) => {
-                    let name = self.lexer.str_from_span(name).to_string();
-                    self.insert_name_to_ctx(name, IRValue::Void);
-                }
-                (None, _) => (),
-            }
-        }
+    pub fn build(mut self, ast: &Ast, mono_exprs: &MonoExprs) -> Module {
+        self.visit_mono_exprs(mono_exprs);
+        self.visit_bindings(ast);
         self.curr_fun().ret(IRValue::Void);
         self.module
+    }
+
+    fn visit_mono_exprs(&mut self, mono_exprs: &MonoExprs) {
+        for (name, expr) in mono_exprs.binds.iter().rev() {
+            let name = Some(name.clone());
+            self.visit_bind(name, &expr.borrow());
+        }
+    }
+
+    fn visit_bindings(&mut self, ast: &Ast) {
+        for binding in &ast.binds {
+            if self.is_polymorphic(binding) {
+                continue;
+            }
+            let name = binding
+                .name
+                .clone()
+                .map(|span| self.lexer.str_from_span(&span).to_string());
+            self.visit_bind(name, &binding.expr.borrow());
+        }
+    }
+
+    fn visit_bind(&mut self, name: Option<String>, expr: &Expr) {
+        let expr_val = self.visit_expr(expr);
+        let ir_typ = expr_val.typ().clone();
+
+        // TODO: better void handling
+        match (name, ir_typ.is_void()) {
+            (Some(name), false) => {
+                self.module
+                    .new_global_var(name.clone(), ir_typ.clone(), None);
+                let global_val = IRValue::Global(name.clone(), ir_typ);
+                self.insert_name_to_ctx(name, global_val.clone());
+                self.curr_fun().store(expr_val, global_val);
+            }
+            (Some(name), true) => {
+                self.insert_name_to_ctx(name, IRValue::Void);
+            }
+            (None, _) => (),
+        }
     }
 
     fn visit_expr(&mut self, expr: &Expr) -> IRValue {
@@ -474,8 +496,8 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_var_expr(&mut self, var_expr: &VarExpr) -> IRValue {
-        let name = self.lexer.str_from_span(&var_expr.id);
-        let val = self.get_value_from_ctx(name);
+        let mono_name = var_expr.mono_name(self.lexer);
+        let val = self.get_value_from_ctx(&mono_name);
         if let IRValue::Global(_, typ) = &val {
             self.curr_fun().load(typ.clone(), val)
         } else {
@@ -743,7 +765,10 @@ impl<'a> IRBuilder<'a> {
 
     fn get_value_from_ctx(&self, name: &str) -> IRValue {
         if let Some(context) = &self.context {
-            context.get(name).expect("name not in context").clone()
+            context
+                .get(name)
+                .unwrap_or_else(|| panic!("'{name}' not in context"))
+                .clone()
         } else {
             panic!("context unassigned")
         }
@@ -803,6 +828,14 @@ impl<'a> IRBuilder<'a> {
         };
         let fun_ptr = IRValue::Global("gcmalloc".to_string(), IRType::Ptr);
         self.curr_fun().normal_call(fun_ptr, ret_typ, vec![sz])
+    }
+
+    fn is_polymorphic(&self, bind: &Bind) -> bool {
+        let typ = {
+            let expr_ptr = &*bind.expr.borrow() as *const Expr;
+            self.get_typ(expr_ptr)
+        };
+        is_polymorphic(typ)
     }
 }
 

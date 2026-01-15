@@ -190,6 +190,21 @@ impl ApplicationExpr {
     }
 }
 
+impl VarExpr {
+    pub fn base_name<'a>(&self, lexer: &'a Lexer) -> &'a str {
+        lexer.str_from_span(&self.id)
+    }
+
+    pub fn mono_name(&self, lexer: &Lexer) -> String {
+        let mut var_name = self.base_name(lexer).to_string();
+        if let Some(poly_args) = &self.poly_args {
+            var_name += ".";
+            var_name += poly_args;
+        }
+        var_name
+    }
+}
+
 impl Pattern {
     pub fn has_literal(&self) -> bool {
         match self {

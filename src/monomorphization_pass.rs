@@ -11,7 +11,7 @@ use crate::{
     },
     lexer::Lexer,
     terminal_colors::{BLUE, END, YELLOW},
-    typ::{Type, TypeMap, Variable},
+    typ::{Type, TypeMap, Variable, is_polymorphic},
 };
 
 pub fn monomorphize(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: bool) -> MonoExprs {
@@ -28,7 +28,7 @@ pub fn monomorphize(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: boo
 
 #[derive(Default)]
 pub struct MonoExprs {
-    binds: HashMap<String, Rc<RefCell<Expr>>>,
+    pub binds: Vec<(String, Rc<RefCell<Expr>>)>,
 }
 
 struct MonoPass<'a> {
@@ -96,6 +96,7 @@ impl<'a> MonoPass<'a> {
     }
 
     fn transform_poly_application(&mut self, application_expr: &mut ApplicationExpr) {
+        // TODO: Refactor
         let mono_typ = self.get_from_type_map(&application_expr.fun);
         if let Expr::Var(VarExpr {
             id: var_id,
@@ -109,12 +110,20 @@ impl<'a> MonoPass<'a> {
             let poly_args_str = poly_args_to_string(&poly_args);
             var_poly_args.replace(poly_args_str.clone());
 
-            let var_name = self.lexer.str_from_span(var_id).to_string();
-            let mono_name = var_name.clone() + "." + &poly_args_str;
-            if !self.mono_exprs.binds.contains_key(&mono_name) {
-                self.debug(&var_name, &poly_typ, &mono_typ, &poly_args);
+            let var = VarExpr {
+                id: var_id.clone(),
+                poly_args: var_poly_args.clone(),
+            };
+            let mono_name = var.mono_name(self.lexer);
+            let has_monomorphized = self
+                .mono_exprs
+                .binds
+                .iter()
+                .any(|(name, _)| name == &mono_name);
+            if !has_monomorphized {
+                self.debug(&var, &poly_typ, &mono_typ, &poly_args);
                 let mono_expr = self.monomorphize_expr(&poly_expr.clone(), &poly_args);
-                self.mono_exprs.binds.insert(mono_name, mono_expr.clone());
+                self.mono_exprs.binds.push((mono_name, mono_expr.clone()));
                 self.transform_poly_applications(&mono_expr);
             }
         }
@@ -241,14 +250,15 @@ impl<'a> MonoPass<'a> {
 
     fn debug(
         &self,
-        var_name: &str,
+        var: &VarExpr,
         poly_typ: &Rc<RefCell<Type>>,
         mono_typ: &Rc<RefCell<Type>>,
         poly_args: &BTreeMap<usize, Rc<RefCell<Type>>>,
     ) {
         if self.debug {
             println!(
-                "Monomorphing {YELLOW}'{var_name}' {}{END} into {BLUE}{}{END}:",
+                "Monomorphing {YELLOW}'{}' {}{END} into {BLUE}{}{END}:",
+                var.mono_name(self.lexer),
                 poly_typ.borrow(),
                 mono_typ.borrow()
             );
@@ -260,16 +270,6 @@ impl<'a> MonoPass<'a> {
                 )
             });
         }
-    }
-}
-
-fn is_polymorphic(typ: Rc<RefCell<Type>>) -> bool {
-    match &*typ.borrow() {
-        Type::Fun(typs) | Type::Tuple(typs) => typs.iter().cloned().any(is_polymorphic),
-        Type::Variable(Variable::Link(typ)) => is_polymorphic(typ.clone()),
-        Type::Variable(Variable::Unbound(_)) => true,
-        Type::Custom(_) => false,
-        Type::Primitive(_) => false,
     }
 }
 
@@ -304,6 +304,7 @@ fn poly_args_to_string(typ_args: &BTreeMap<usize, Rc<RefCell<Type>>>) -> String 
     typ_args
         .values()
         .map(|t| t.borrow().to_string())
+        .map(|t| if t == "()" { "unit".to_string() } else { t })
         .collect::<Vec<String>>()
         .join(".")
 }
