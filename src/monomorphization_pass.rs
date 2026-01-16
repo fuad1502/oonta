@@ -11,7 +11,7 @@ use crate::{
     },
     lexer::Lexer,
     terminal_colors::{BLUE, END, YELLOW},
-    typ::{Type, TypeMap, Variable, is_polymorphic, poly_arg_str},
+    typ::{Type, TypeMap, Variable, is_polymorphic},
 };
 
 pub fn monomorphize(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: bool) -> MonoExprs {
@@ -304,7 +304,7 @@ fn gather_poly_args(
 fn poly_args_to_string(typ_args: &BTreeMap<usize, Rc<RefCell<Type>>>) -> String {
     typ_args
         .values()
-        .map(poly_arg_str)
+        .map(|t| t.borrow().poly_arg_str())
         .collect::<Vec<String>>()
         .join(".")
 }

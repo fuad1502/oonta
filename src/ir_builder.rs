@@ -157,7 +157,7 @@ impl<'a> IRBuilder<'a> {
         let env_values: Vec<IRValue> = fun_expr
             .captures
             .iter()
-            .map(|e| self.get_value_from_ctx(e))
+            .map(|e| self.get_value_from_ctx(e).unwrap())
             .collect();
         let env_typs: Vec<IRType> = env_values.iter().map(|v| v.typ()).collect();
         let closure_typ = if env_typs.is_empty() {
@@ -500,7 +500,7 @@ impl<'a> IRBuilder<'a> {
 
     fn visit_var_expr(&mut self, var_expr: &VarExpr) -> IRValue {
         let mono_name = var_expr.mono_name(self.lexer);
-        let val = self.get_value_from_ctx(&mono_name);
+        let val = self.get_value_from_ctx(&mono_name).unwrap();
         if let IRValue::Global(_, typ) = &val {
             self.curr_fun().load(typ.clone(), val)
         } else {
@@ -546,15 +546,40 @@ impl<'a> IRBuilder<'a> {
         operand_typ: Type,
     ) -> IRValue {
         match operand_typ {
-            Type::Tuple(typs) => self.handle_tuple_comparison(lhs, rhs, operator, typs),
-            Type::Custom(name) => self.handle_variant_comparison(lhs, rhs, operator, name),
             Type::Primitive(Primitive::Integer) | Type::Primitive(Primitive::Bool) => {
-                self.curr_fun().binop(IRType::I1, lhs, rhs, operator)
+                return self.curr_fun().binop(IRType::I1, lhs, rhs, operator);
             }
-            Type::Primitive(Primitive::Unit) => self.handle_unit_comparison(operator),
+            Type::Primitive(Primitive::Unit) => return self.handle_unit_comparison(operator),
             Type::Fun(_) => panic!("Cannot compare functions"),
             Type::Variable(_) => unreachable!(),
+            _ => (),
         }
+
+        let cmp_fun_name =
+            operator.cmp_fun_prefix().to_string() + "." + &operand_typ.poly_arg_str();
+        let fun_ptr = IRValue::Global(cmp_fun_name.clone(), IRType::Ptr);
+
+        if self.module.get_function(&cmp_fun_name).is_none() {
+            let operands = vec![
+                ("lhs".to_string(), IRType::from(&operand_typ)),
+                ("rhs".to_string(), IRType::from(&operand_typ)),
+            ];
+            let fun = Function::new(cmp_fun_name.clone(), IRType::I1, operands);
+            let lhs = fun.param(0);
+            let rhs = fun.param(1);
+            self.module.new_function(cmp_fun_name.clone(), fun);
+            self.push_ctx(cmp_fun_name, None);
+            let ret = match &operand_typ {
+                Type::Tuple(typs) => self.handle_tuple_comparison(lhs, rhs, operator, typs),
+                Type::Custom(name) => self.handle_variant_comparison(lhs, rhs, operator, name),
+                _ => unreachable!(),
+            };
+            self.curr_fun().ret(ret.clone());
+            self.pop_ctx();
+        }
+
+        self.curr_fun()
+            .fast_call(fun_ptr, IRType::I1, vec![lhs, rhs])
     }
 
     fn handle_tuple_comparison(
@@ -562,7 +587,7 @@ impl<'a> IRBuilder<'a> {
         lhs: IRValue,
         rhs: IRValue,
         operator: Operator,
-        typs: Vec<Rc<RefCell<Type>>>,
+        typs: &[Rc<RefCell<Type>>],
     ) -> IRValue {
         let res_ptr = self.curr_fun().alloca(IRType::I1);
         self.curr_fun()
@@ -643,7 +668,7 @@ impl<'a> IRBuilder<'a> {
         _lhs: IRValue,
         _rhs: IRValue,
         _operator: Operator,
-        _typ_name: String,
+        _typ_name: &str,
     ) -> IRValue {
         todo!()
     }
@@ -900,15 +925,11 @@ impl<'a> IRBuilder<'a> {
         }
     }
 
-    fn get_value_from_ctx(&self, name: &str) -> IRValue {
+    fn get_value_from_ctx(&self, name: &str) -> Option<IRValue> {
         if let Some(context) = &self.context {
-            context
-                .get(name)
-                .unwrap_or_else(|| panic!("'{name}' not in context"))
-                .clone()
-        } else {
-            panic!("context unassigned")
+            return context.get(name).cloned();
         }
+        None
     }
 
     fn get_ctx_recursive_bind(&self) -> &Option<String> {

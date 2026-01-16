@@ -676,7 +676,13 @@ impl IRType {
 
 impl From<Rc<RefCell<Type>>> for IRType {
     fn from(typ: Rc<RefCell<Type>>) -> Self {
-        match normalize_typ(typ) {
+        (&normalize_typ(typ)).into()
+    }
+}
+
+impl From<&Type> for IRType {
+    fn from(typ: &Type) -> Self {
+        match typ {
             Type::Fun(_) | Type::Tuple(_) | Type::Custom(_) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
             Type::Primitive(Primitive::Bool) => IRType::I1,

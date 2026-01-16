@@ -623,14 +623,15 @@ pub fn is_polymorphic(typ: Rc<RefCell<Type>>) -> bool {
     }
 }
 
-pub fn poly_arg_str(typ: &Rc<RefCell<Type>>) -> String {
-    typ.borrow()
-        .to_string()
-        .replace(" ", "")
-        .replace("(", "$l")
-        .replace(")", "$r")
-        .replace("*", "$s")
-        .replace("->", "$a")
+impl Type {
+    pub fn poly_arg_str(&self) -> String {
+        self.to_string()
+            .replace(" ", "")
+            .replace("(", "$l")
+            .replace(")", "$r")
+            .replace("*", "$s")
+            .replace("->", "$a")
+    }
 }
 
 impl std::fmt::Display for Type {

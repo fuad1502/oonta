@@ -229,6 +229,20 @@ impl Pattern {
     }
 }
 
+impl Operator {
+    pub fn cmp_fun_prefix(&self) -> &'static str {
+        match self {
+            Operator::Eq => "oonta.eq",
+            Operator::Neq => "oonta.eq",
+            Operator::Lte => "oonta.lte",
+            Operator::Lt => "oonta.lt",
+            Operator::Gte => "oonta.gte",
+            Operator::Gt => "oonta.gt",
+            _ => panic!("Only use cmp name on comparison operators"),
+        }
+    }
+}
+
 impl std::fmt::Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
