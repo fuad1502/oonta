@@ -1,5 +1,10 @@
 use core::fmt::Formatter;
-use std::{cell::RefCell, collections::HashMap, io::Write, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    io::Write,
+    rc::Rc,
+};
 
 use crate::{
     ast::Operator,
@@ -10,8 +15,9 @@ use crate::{
 pub struct Module {
     global_vars: Vec<GlobalVar>,
     global_constants: Vec<GlobalVar>,
-    function_defs: HashMap<String, Function>,
-    function_decls: HashMap<String, FunSignature>,
+    function_defs: BTreeMap<String, Function>,
+    function_decls: BTreeMap<String, FunSignature>,
+    used_names: HashMap<String, usize>,
 }
 
 pub struct GlobalVar {
@@ -110,33 +116,41 @@ pub enum IRPri {
 }
 
 impl Module {
-    pub fn new_global_var(&mut self, name: String, ir_typ: IRType, init: Option<IRValue>) {
+    pub fn new_global_var(&mut self, name: &str, ir_typ: IRType, init: Option<IRValue>) -> String {
+        let name = self.new_name(name);
         let global = GlobalVar {
-            name,
+            name: name.clone(),
             ir_typ,
             init,
             constant: false,
         };
         self.global_vars.push(global);
+        name
     }
 
-    pub fn new_global_constant(&mut self, name: String, init: IRValue) {
+    pub fn new_global_constant(&mut self, name: &str, init: IRValue) -> String {
+        let name = self.new_name(name);
         let ir_typ = init.typ();
         let global = GlobalVar {
-            name,
+            name: name.clone(),
             ir_typ,
             init: Some(init),
             constant: true,
         };
         self.global_constants.push(global);
+        name
     }
 
-    pub fn new_function(&mut self, name: String, function: Function) {
-        self.function_defs.insert(name, function);
+    pub fn new_function(&mut self, mut function: Function) -> String {
+        let name = self.new_name(&function.name);
+        function.name = name.clone();
+        self.function_defs.insert(name.clone(), function);
+        name
     }
 
-    pub fn new_function_decl(&mut self, name: String, signature: FunSignature) {
-        self.function_decls.insert(name, signature);
+    pub fn new_function_decl(&mut self, signature: FunSignature) {
+        self.function_decls
+            .insert(signature.name.clone(), signature);
     }
 
     pub fn get_function(&mut self, name: &str) -> Option<&mut Function> {
@@ -163,6 +177,18 @@ impl Module {
         self.function_defs
             .values()
             .try_for_each(|fun| writeln!(wr, "{fun}\n"))
+    }
+
+    fn new_name(&mut self, base: &str) -> String {
+        if let Some(idx) = self.used_names.get_mut(base) {
+            let name = format!("{base}{idx}");
+            *idx += 1;
+            name
+        } else {
+            let name = base.to_string();
+            self.used_names.insert(name.clone(), 0);
+            name
+        }
     }
 }
 

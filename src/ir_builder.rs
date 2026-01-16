@@ -24,7 +24,7 @@ pub struct IRBuilder<'a> {
     lexer: &'a Lexer,
     context: Option<Context>,
     module: Module,
-    anon_fun_count: usize,
+    bind_name: Option<String>,
 }
 
 struct Context {
@@ -44,18 +44,18 @@ impl<'a> IRBuilder<'a> {
         let main_fun_name = if is_top_level {
             "main".to_string()
         } else {
-            "caml_main".to_string()
+            "oonta_main".to_string()
         };
         let main_function = Function::new(main_fun_name.clone(), IRType::Void, vec![]);
         let mut module = Module::default();
-        module.new_function(main_fun_name.clone(), main_function);
+        let main_fun_name = module.new_function(main_function);
         let builder = Self {
             type_map,
             custom_types,
             lexer,
             context: Some(Context::new(main_fun_name, None)),
             module,
-            anon_fun_count: 0,
+            bind_name: None,
         };
         builder.populate_builtins()
     }
@@ -88,17 +88,18 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_bind(&mut self, name: Option<String>, expr: &Expr) {
+        self.bind_name = name.clone();
         let expr_val = self.visit_expr(expr);
         let ir_typ = expr_val.typ().clone();
 
         // TODO: better void handling
         match (name, ir_typ.is_void()) {
             (Some(name), false) => {
-                self.module
-                    .new_global_var(name.clone(), ir_typ.clone(), None);
-                let global_val = IRValue::Global(name.clone(), ir_typ);
-                self.insert_name_to_ctx(name, global_val.clone());
-                self.curr_fun().store(expr_val, global_val);
+                let glb_name = Self::glb_name(&name);
+                let glb_name = self.module.new_global_var(&glb_name, ir_typ.clone(), None);
+                let glb_val = IRValue::Global(glb_name.clone(), ir_typ);
+                self.insert_name_to_ctx(name, glb_val.clone());
+                self.curr_fun().store(expr_val, glb_val);
             }
             (Some(name), true) => {
                 self.insert_name_to_ctx(name, IRValue::Void);
@@ -129,7 +130,7 @@ impl<'a> IRBuilder<'a> {
 
     fn visit_fun_expr(&mut self, fun_expr: &FunExpr, expr_ptr: *const Expr) -> IRValue {
         // 1. Create function
-        let fun_name = self.new_anon_fun_name();
+        let fun_name = self.create_fun_name();
         let param_names: Vec<String> = fun_expr
             .params
             .iter()
@@ -140,7 +141,7 @@ impl<'a> IRBuilder<'a> {
         fun.add_param(("env".to_string(), IRType::Ptr));
 
         // > add function to module
-        self.module.new_function(fun_name.clone(), fun);
+        let fun_name = self.module.new_function(fun);
 
         // 2. Populate context
         self.push_ctx(fun_name.clone(), fun_expr.recursive_bind.clone());
@@ -263,7 +264,7 @@ impl<'a> IRBuilder<'a> {
         dispatch_ret_typ: Rc<RefCell<Type>>,
     ) -> IRValue {
         // 1. Create function
-        let dispatch_fun_name = self.new_anon_fun_name();
+        let dispatch_fun_name = self.create_fun_name();
         let dispath_param_names = vec!["p".to_string(); num_of_remainding_args];
         let mut dispatch_fun = Function::from_typ(
             dispatch_fun_name.clone(),
@@ -273,8 +274,7 @@ impl<'a> IRBuilder<'a> {
         dispatch_fun.add_param(("env".to_string(), IRType::Ptr));
 
         // > add function to module
-        self.module
-            .new_function(dispatch_fun_name.clone(), dispatch_fun);
+        let dispatch_fun_name = self.module.new_function(dispatch_fun);
 
         // 2. Create dispath closure
         let closure = self.visit_expr(&application_expr.fun.borrow());
@@ -567,7 +567,7 @@ impl<'a> IRBuilder<'a> {
             let fun = Function::new(cmp_fun_name.clone(), IRType::I1, operands);
             let lhs = fun.param(0);
             let rhs = fun.param(1);
-            self.module.new_function(cmp_fun_name.clone(), fun);
+            self.module.new_function(fun);
             self.push_ctx(cmp_fun_name, None);
             let ret = match &operand_typ {
                 Type::Tuple(typs) => self.handle_tuple_comparison(lhs, rhs, operator, typs),
@@ -809,9 +809,8 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn populate_builtins(mut self) -> Self {
-        let fmt_str_name = "fmt".to_string();
         let init = IRValue::Pri(IRPri::Str("%lld"));
-        self.module.new_global_constant(fmt_str_name.clone(), init);
+        let fmt_str_name = self.module.new_global_constant("oonta.fmt_str", init);
         let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
         self.insert_print_int_builtin(fmt_str_ptr.clone())
             .insert_read_int_builtin(fmt_str_ptr)
@@ -819,82 +818,74 @@ impl<'a> IRBuilder<'a> {
 
     fn insert_print_int_builtin(mut self, fmt_str_ptr: IRValue) -> Self {
         // 1. Insert printf declaration
-        let printf_fun_name = "printf".to_string();
+        let printf = "printf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
-        let signature = FunSignature::new(printf_fun_name.clone(), ret_typ, params)
+        let signature = FunSignature::new(printf.clone(), ret_typ, params)
             .varargs()
             .ccc();
-        self.module
-            .new_function_decl(printf_fun_name.clone(), signature);
+        self.module.new_function_decl(signature);
 
         // 2. Define print_int function
-        let anon_fun_name = self.new_anon_fun_name();
         let ret_typ = IRType::Void;
         let params = vec![("p".to_string(), IRType::I64)];
-        let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
-        let printf_fun_ptr = IRValue::Global(printf_fun_name, IRType::Ptr);
+        let mut fun = Function::new("oonta.print_int.fun".to_string(), ret_typ, params);
+        let printf_fun_ptr = IRValue::Global(printf, IRType::Ptr);
         let printf_args = vec![fmt_str_ptr, fun.param(0)];
         fun.normal_call(printf_fun_ptr, IRType::I32, printf_args);
         fun.ret(IRValue::Void);
-        self.module.new_function(anon_fun_name.clone(), fun);
+        let fun_name = self.module.new_function(fun);
 
         // 3. Insert closure
-        let closure_name = "_print_int".to_string();
-        let init = IRValue::Global(anon_fun_name, IRType::Ptr);
-        self.module.new_global_constant(closure_name.clone(), init);
+        let init = IRValue::Global(fun_name, IRType::Ptr);
+        let closure_name = self
+            .module
+            .new_global_constant("oonta.print_int.closure", init);
 
         // 4. Insert global var
-        let print_int_name = "print_int".to_string();
         let init = IRValue::Global(closure_name, IRType::Ptr);
-        self.module
-            .new_global_constant(print_int_name.clone(), init);
-        self.insert_name_to_ctx(
-            print_int_name.clone(),
-            IRValue::Global(print_int_name, IRType::Ptr),
-        );
+        let print_int = "print_int".to_string();
+        let glb_name = Self::glb_name(&print_int);
+        let glb_name = self.module.new_global_constant(&glb_name, init);
+        self.insert_name_to_ctx(print_int, IRValue::Global(glb_name, IRType::Ptr));
 
         self
     }
 
     fn insert_read_int_builtin(mut self, fmt_str_ptr: IRValue) -> Self {
         // 1. Insert scanf declaration
-        let scanf_fun_name = "scanf".to_string();
+        let scanf = "scanf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
-        let signature = FunSignature::new(scanf_fun_name.clone(), ret_typ, params)
+        let signature = FunSignature::new(scanf.clone(), ret_typ, params)
             .varargs()
             .ccc();
-        self.module
-            .new_function_decl(scanf_fun_name.clone(), signature);
+        self.module.new_function_decl(signature);
 
         // 2. Define read_int function
-        let anon_fun_name = self.new_anon_fun_name();
         let ret_typ = IRType::I64;
         let params = vec![];
-        let mut fun = Function::new(anon_fun_name.clone(), ret_typ, params);
-        let scanf_fun_ptr = IRValue::Global(scanf_fun_name, IRType::Ptr);
+        let mut fun = Function::new("oonta.read_int.fun".to_string(), ret_typ, params);
+        let scanf_fun_ptr = IRValue::Global(scanf, IRType::Ptr);
         let res_ptr = fun.alloca(IRType::I64);
         let scanf_args = vec![fmt_str_ptr, res_ptr.clone()];
         fun.normal_call(scanf_fun_ptr, IRType::I32, scanf_args);
         let res = fun.load(IRType::I64, res_ptr);
         fun.ret(res);
-        self.module.new_function(anon_fun_name.clone(), fun);
+        let fun_name = self.module.new_function(fun);
 
         // 3. Insert closure
-        let closure_name = "_read_int".to_string();
-        let init = IRValue::Global(anon_fun_name, IRType::Ptr);
-        self.module.new_global_constant(closure_name.clone(), init);
+        let init = IRValue::Global(fun_name, IRType::Ptr);
+        let closure_name = self
+            .module
+            .new_global_constant("oonta.read_int.closure", init);
 
         // 4. Insert global var
-        let print_int_name = "read_int".to_string();
         let init = IRValue::Global(closure_name, IRType::Ptr);
-        self.module
-            .new_global_constant(print_int_name.clone(), init);
-        self.insert_name_to_ctx(
-            print_int_name.clone(),
-            IRValue::Global(print_int_name, IRType::Ptr),
-        );
+        let read_int = "read_int".to_string();
+        let glb_name = Self::glb_name(&read_int);
+        let glb_name = self.module.new_global_constant(&glb_name, init);
+        self.insert_name_to_ctx(read_int, IRValue::Global(glb_name, IRType::Ptr));
 
         self
     }
@@ -915,6 +906,19 @@ impl<'a> IRBuilder<'a> {
         } else {
             panic!()
         }
+    }
+
+    fn create_fun_name(&mut self) -> String {
+        let current_bind = if let Some(name) = &self.bind_name {
+            name
+        } else {
+            "unbound"
+        };
+        format!("oonta.{}.fun", current_bind)
+    }
+
+    fn glb_name(bind_name: &str) -> String {
+        format!("oonta.{bind_name}")
     }
 
     fn insert_name_to_ctx(&mut self, name: String, ir_value: IRValue) {
@@ -963,28 +967,22 @@ impl<'a> IRBuilder<'a> {
         }
     }
 
-    fn new_anon_fun_name(&mut self) -> String {
-        let name = format!("anon_{}", self.anon_fun_count);
-        self.anon_fun_count += 1;
-        name
-    }
-
     fn malloc(&mut self, sz: usize) -> IRValue {
         let sz = IRValue::Pri(IRPri::I64(sz as i64));
-        let ret_typ = match self.module.get_function_decl("gcmalloc") {
+        let gcmalloc = "gcmalloc".to_string();
+        let ret_typ = match self.module.get_function_decl(&gcmalloc) {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
-                let name = "gcmalloc".to_string();
                 let ret_typ = IRType::Ptr;
                 let params = vec![IRType::I64];
-                let signature = FunSignature::new(name.clone(), ret_typ.clone(), params)
+                let signature = FunSignature::new(gcmalloc.clone(), ret_typ.clone(), params)
                     .alloc()
                     .ccc();
-                self.module.new_function_decl(name, signature);
+                self.module.new_function_decl(signature);
                 ret_typ
             }
         };
-        let fun_ptr = IRValue::Global("gcmalloc".to_string(), IRType::Ptr);
+        let fun_ptr = IRValue::Global(gcmalloc, IRType::Ptr);
         self.curr_fun().normal_call(fun_ptr, ret_typ, vec![sz])
     }
 
