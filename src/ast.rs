@@ -32,13 +32,16 @@ pub enum Expr {
     Tuple(TupleExpr),
 }
 
+#[derive(Clone)]
 pub enum LiteralExpr {
     Integer(i64, Span),
     Unit(Span),
 }
 
+#[derive(Clone)]
 pub struct VarExpr {
     pub id: Span,
+    pub poly_args: Option<String>,
 }
 
 pub struct FunExpr {
@@ -87,6 +90,7 @@ pub struct PatternMatchExpr {
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub enum Pattern {
     Tuple(Vec<Pattern>),
     Constructor(Span, Option<Box<Pattern>>),
@@ -100,13 +104,14 @@ pub struct TupleExpr {
     pub span: Span,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum Operator {
     Plus,
     Minus,
     Star,
     Slash,
     Eq,
+    Neq,
     Lte,
     Lt,
     Gte,
@@ -132,7 +137,7 @@ impl Expr {
         match self {
             Expr::Literal(LiteralExpr::Integer(_, span)) => span,
             Expr::Literal(LiteralExpr::Unit(span)) => span,
-            Expr::Var(VarExpr { id }) => id,
+            Expr::Var(VarExpr { id, .. }) => id,
             Expr::Fun(FunExpr { span, .. }) => span,
             Expr::Application(ApplicationExpr { span, .. }) => span,
             Expr::LetIn(LetInExpr { span, .. }) => span,
@@ -145,7 +150,10 @@ impl Expr {
     }
 
     pub fn var(span: Span) -> Self {
-        Self::Var(VarExpr { id: span })
+        Self::Var(VarExpr {
+            id: span,
+            poly_args: None,
+        })
     }
 
     pub fn fun(
@@ -183,6 +191,21 @@ impl ApplicationExpr {
     }
 }
 
+impl VarExpr {
+    pub fn base_name<'a>(&self, lexer: &'a Lexer) -> &'a str {
+        lexer.str_from_span(&self.id)
+    }
+
+    pub fn mono_name(&self, lexer: &Lexer) -> String {
+        let mut var_name = self.base_name(lexer).to_string();
+        if let Some(poly_args) = &self.poly_args {
+            var_name += ".";
+            var_name += poly_args;
+        }
+        var_name
+    }
+}
+
 impl Pattern {
     pub fn has_literal(&self) -> bool {
         match self {
@@ -206,6 +229,20 @@ impl Pattern {
     }
 }
 
+impl Operator {
+    pub fn cmp_fun_prefix(&self) -> &'static str {
+        match self {
+            Operator::Eq => "oonta.$eq",
+            Operator::Neq => "oonta.$eq",
+            Operator::Lte => "oonta.$lte",
+            Operator::Lt => "oonta.$lt",
+            Operator::Gte => "oonta.$gte",
+            Operator::Gt => "oonta.$gt",
+            _ => panic!("Only use cmp name on comparison operators"),
+        }
+    }
+}
+
 impl std::fmt::Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -214,6 +251,7 @@ impl std::fmt::Display for Operator {
             Operator::Star => write!(f, "*"),
             Operator::Slash => write!(f, "/"),
             Operator::Eq => write!(f, "="),
+            Operator::Neq => write!(f, "<>"),
             Operator::Lte => write!(f, "<="),
             Operator::Lt => write!(f, "<"),
             Operator::Gte => write!(f, ">="),

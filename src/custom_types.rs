@@ -41,6 +41,10 @@ impl CustomTypes {
         });
     }
 
+    pub fn get_constructors(&self, name: &str) -> &Vec<String> {
+        &self.variant_to_constructors[name]
+    }
+
     pub fn get_constructor_typ(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
         self.constructor_to_variant
             .get(name)

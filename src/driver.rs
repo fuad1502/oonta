@@ -13,6 +13,7 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
+    monomorphization_pass::{MonoExprs, monomorphize},
     parser::Parser,
     symbol::Symbol,
     terminal_colors::{BLUE, END, GREEN, RED, YELLOW},
@@ -93,8 +94,19 @@ impl Driver {
         transform_applications(&ast, &mut type_map, &lexer, self.debug_phases);
         self.dbg_end();
 
+        self.dbg_start("Monomorphization");
+        let mono_exprs = monomorphize(&ast, &mut type_map, &lexer, self.debug_phases);
+        self.dbg_end();
+
         self.dbg_start("Build LLVM module");
-        let module = build_module(&ast, &type_map, &custom_types, &lexer, self.top_level);
+        let module = build_module(
+            &ast,
+            &mono_exprs,
+            &type_map,
+            &custom_types,
+            &lexer,
+            self.top_level,
+        );
         self.dbg_end();
 
         self.dbg_start("Write LLVM module");
@@ -173,13 +185,14 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
 
 fn build_module(
     ast: &Ast,
+    mono_exprs: &MonoExprs,
     type_map: &TypeMap,
     custom_types: &CustomTypes,
     lexer: &Lexer,
     is_top_level: bool,
 ) -> Module {
     let ir_builder = IRBuilder::new(type_map, custom_types, lexer, is_top_level);
-    ir_builder.build(ast)
+    ir_builder.build(ast, mono_exprs)
 }
 
 fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
@@ -290,6 +303,46 @@ mod test {
     #[test]
     fn exec_merge_sort() {
         exec("merge_sort", "12345");
+    }
+
+    #[test]
+    fn ll_polymorphic() {
+        ll("polymorphic", false);
+    }
+
+    #[test]
+    fn ll_opt_polymorphic() {
+        ll("polymorphic", true);
+    }
+
+    #[test]
+    fn obj_polymorphic() {
+        obj("polymorphic");
+    }
+
+    #[test]
+    fn exec_polymorphic() {
+        exec("polymorphic", "2");
+    }
+
+    #[test]
+    fn ll_comparison() {
+        ll("comparison", false);
+    }
+
+    #[test]
+    fn ll_opt_comparison() {
+        ll("comparison", true);
+    }
+
+    #[test]
+    fn obj_comparison() {
+        obj("comparison");
+    }
+
+    #[test]
+    fn exec_comparison() {
+        exec("comparison", "11001111011");
     }
 
     fn ll(test_name: &str, opt: bool) {

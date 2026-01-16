@@ -1,5 +1,10 @@
 use core::fmt::Formatter;
-use std::{collections::HashMap, io::Write};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    io::Write,
+    rc::Rc,
+};
 
 use crate::{
     ast::Operator,
@@ -10,8 +15,9 @@ use crate::{
 pub struct Module {
     global_vars: Vec<GlobalVar>,
     global_constants: Vec<GlobalVar>,
-    function_defs: HashMap<String, Function>,
-    function_decls: HashMap<String, FunSignature>,
+    function_defs: BTreeMap<String, Function>,
+    function_decls: BTreeMap<String, FunSignature>,
+    used_names: HashMap<String, usize>,
 }
 
 pub struct GlobalVar {
@@ -78,6 +84,7 @@ pub enum InstrClass {
     Mul(IRType, IRValue, IRValue),
     Div(IRType, IRValue, IRValue),
     Eq(IRType, IRValue, IRValue),
+    Neq(IRType, IRValue, IRValue),
     Lte(IRType, IRValue, IRValue),
     Lt(IRType, IRValue, IRValue),
     Gte(IRType, IRValue, IRValue),
@@ -88,6 +95,7 @@ pub enum InstrClass {
     Alloca(IRType),
     CondBrk(IRValue, String, String),
     Brk(String),
+    Switch(IRValue, String, Vec<(IRValue, String)>),
     GetElemPtr(IRType, IRValue, Vec<IRValue>),
     Return(IRValue),
 }
@@ -109,33 +117,41 @@ pub enum IRPri {
 }
 
 impl Module {
-    pub fn new_global_var(&mut self, name: String, ir_typ: IRType, init: Option<IRValue>) {
+    pub fn new_global_var(&mut self, name: &str, ir_typ: IRType, init: Option<IRValue>) -> String {
+        let name = self.new_name(name);
         let global = GlobalVar {
-            name,
+            name: name.clone(),
             ir_typ,
             init,
             constant: false,
         };
         self.global_vars.push(global);
+        name
     }
 
-    pub fn new_global_constant(&mut self, name: String, init: IRValue) {
+    pub fn new_global_constant(&mut self, name: &str, init: IRValue) -> String {
+        let name = self.new_name(name);
         let ir_typ = init.typ();
         let global = GlobalVar {
-            name,
+            name: name.clone(),
             ir_typ,
             init: Some(init),
             constant: true,
         };
         self.global_constants.push(global);
+        name
     }
 
-    pub fn new_function(&mut self, name: String, function: Function) {
-        self.function_defs.insert(name, function);
+    pub fn new_function(&mut self, mut function: Function) -> String {
+        let name = self.new_name(&function.name);
+        function.name = name.clone();
+        self.function_defs.insert(name.clone(), function);
+        name
     }
 
-    pub fn new_function_decl(&mut self, name: String, signature: FunSignature) {
-        self.function_decls.insert(name, signature);
+    pub fn new_function_decl(&mut self, signature: FunSignature) {
+        self.function_decls
+            .insert(signature.name.clone(), signature);
     }
 
     pub fn get_function(&mut self, name: &str) -> Option<&mut Function> {
@@ -162,6 +178,18 @@ impl Module {
         self.function_defs
             .values()
             .try_for_each(|fun| writeln!(wr, "{fun}\n"))
+    }
+
+    fn new_name(&mut self, base: &str) -> String {
+        if let Some(idx) = self.used_names.get_mut(base) {
+            let name = format!("{base}{idx}");
+            *idx += 1;
+            name
+        } else {
+            let name = base.to_string();
+            self.used_names.insert(name.clone(), 0);
+            name
+        }
     }
 }
 
@@ -207,13 +235,9 @@ impl Function {
         fun
     }
 
-    pub fn from_typ(name: String, param_names: Vec<String>, typ: Type) -> Self {
-        if let Type::Fun(typs) = typ {
-            let mut ir_typs = typs
-                .into_iter()
-                .map(normalize_typ)
-                .map(|t| IRType::from(&t))
-                .collect::<Vec<IRType>>();
+    pub fn from_typ(name: String, param_names: Vec<String>, typ: Rc<RefCell<Type>>) -> Self {
+        if let Type::Fun(typs) = normalize_typ(typ) {
+            let mut ir_typs = typs.into_iter().map(IRType::from).collect::<Vec<IRType>>();
             let ret_typ = ir_typs.pop().unwrap();
             let params = ir_typs
                 .into_iter()
@@ -364,6 +388,18 @@ impl Function {
         self.push_instr(instr);
     }
 
+    pub fn switch(&mut self, value: IRValue, default_label: String, cases: Vec<(usize, String)>) {
+        let cases = cases
+            .into_iter()
+            .map(|(val, label)| (IRValue::Pri(IRPri::I64(val as i64)), label))
+            .collect();
+        let instr = Instr {
+            class: InstrClass::Switch(value, default_label, cases),
+            res: IRValue::Void,
+        };
+        self.push_instr(instr);
+    }
+
     pub fn binop(
         &mut self,
         typ: IRType,
@@ -379,6 +415,7 @@ impl Function {
             Operator::Star => InstrClass::Mul(op_typ, lhs, rhs),
             Operator::Slash => InstrClass::Div(op_typ, lhs, rhs),
             Operator::Eq => InstrClass::Eq(op_typ, lhs, rhs),
+            Operator::Neq => InstrClass::Neq(op_typ, lhs, rhs),
             Operator::Lte => InstrClass::Lte(op_typ, lhs, rhs),
             Operator::Lt => InstrClass::Lt(op_typ, lhs, rhs),
             Operator::Gte => InstrClass::Gte(op_typ, lhs, rhs),
@@ -577,6 +614,9 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Eq(irtype, lhs, rhs) => {
                 write!(fmt, "icmp eq {irtype} {}, {}", lhs.name(), rhs.name())
             }
+            InstrClass::Neq(irtype, lhs, rhs) => {
+                write!(fmt, "icmp ne {irtype} {}, {}", lhs.name(), rhs.name())
+            }
             InstrClass::Lte(irtype, lhs, rhs) => {
                 write!(fmt, "icmp sle {irtype} {}, {}", lhs.name(), rhs.name())
             }
@@ -613,6 +653,13 @@ impl std::fmt::Display for InstrClass {
                 )
             }
             InstrClass::Brk(label) => write!(fmt, "br label %{label}"),
+            InstrClass::Switch(value, default_label, cases) => {
+                write!(fmt, "switch {value}, label %{default_label} [ ")?;
+                cases
+                    .iter()
+                    .try_for_each(|(value, label)| write!(fmt, "{value}, label %{label} "))?;
+                write!(fmt, "]")
+            }
         }
     }
 }
@@ -670,6 +717,12 @@ impl std::fmt::Display for IRValue {
 impl IRType {
     pub fn is_void(&self) -> bool {
         matches!(self, IRType::Void)
+    }
+}
+
+impl From<Rc<RefCell<Type>>> for IRType {
+    fn from(typ: Rc<RefCell<Type>>) -> Self {
+        (&normalize_typ(typ)).into()
     }
 }
 

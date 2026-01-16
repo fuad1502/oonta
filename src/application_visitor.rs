@@ -4,7 +4,7 @@ use crate::{
     ast::{ApplicationExpr, Ast, Expr},
     lexer::Lexer,
     symbol::Span,
-    typ::{TypeMap, extract_fun_typs, normalize_typ},
+    typ::{TypeMap, extract_fun_typs},
 };
 
 struct TransformApplicationsVisitor<'a> {
@@ -71,7 +71,7 @@ impl<'a> TransformApplicationsVisitor<'a> {
     fn transform_application(&mut self, application_expr: &mut ApplicationExpr) {
         let mut fun_typs = {
             let fun_expr_ptr = &*application_expr.fun.borrow() as *const Expr;
-            let fun_typ = normalize_typ(self.type_map.get(fun_expr_ptr).unwrap());
+            let fun_typ = self.type_map.get(fun_expr_ptr).unwrap();
             extract_fun_typs(fun_typ).unwrap()
         };
         if application_expr.binds.len() > (fun_typs.len() - 1) {
