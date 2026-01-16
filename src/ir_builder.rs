@@ -665,12 +665,109 @@ impl<'a> IRBuilder<'a> {
 
     fn handle_variant_comparison(
         &mut self,
-        _lhs: IRValue,
-        _rhs: IRValue,
-        _operator: Operator,
-        _typ_name: &str,
+        lhs: IRValue,
+        rhs: IRValue,
+        operator: Operator,
+        typ_name: &str,
     ) -> IRValue {
-        todo!()
+        let res_ptr = self.curr_fun().alloca(IRType::I1);
+        self.curr_fun()
+            .store(IRValue::Pri(IRPri::I1(false)), res_ptr.clone());
+        let exit_bb = self.curr_fun().create_bb("exit");
+        let exit_label = exit_bb.label().to_string();
+        let true_bb = self.curr_fun().create_bb("true");
+        let true_label = true_bb.label().to_string();
+        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+
+        // 1. Check if certainly false
+        let ptr = self
+            .curr_fun()
+            .getelemptr(variant_typ.clone(), lhs.clone(), &[0, 0]);
+        let tag_l = self.curr_fun().load(IRType::I64, ptr);
+        let ptr = self
+            .curr_fun()
+            .getelemptr(variant_typ.clone(), rhs.clone(), &[0, 0]);
+        let tag_r = self.curr_fun().load(IRType::I64, ptr);
+        let op_negation = match operator {
+            Operator::Eq => Operator::Neq,
+            Operator::Neq => Operator::Eq,
+            Operator::Lte | Operator::Lt => Operator::Gt,
+            Operator::Gte | Operator::Gt => Operator::Lt,
+            _ => unreachable!(),
+        };
+        let cond = self
+            .curr_fun()
+            .binop(IRType::I1, tag_l.clone(), tag_r.clone(), op_negation);
+
+        // 2. Early exit
+        let follow_label = self.curr_fun().add_new_bb("follow");
+        self.curr_fun()
+            .cond_brk(cond, exit_label.clone(), follow_label.clone());
+        self.curr_fun().set_bb(follow_label);
+
+        if operator != Operator::Eq && operator != Operator::Neq {
+            // 3. Check if definitely true
+            let cond = self
+                .curr_fun()
+                .binop(IRType::I1, tag_l.clone(), tag_r, Operator::Eq);
+
+            // 4. Early exit
+            let follow_label = self.curr_fun().add_new_bb("follow");
+            self.curr_fun()
+                .cond_brk(cond, follow_label.clone(), true_label.clone());
+            self.curr_fun().set_bb(follow_label);
+        }
+
+        // 5. Compare inner value
+        let mut case_bbs = vec![];
+        let mut case_typs = vec![];
+        for constructor in self.custom_types.get_constructors(typ_name) {
+            let case_typ = self.custom_types.get_constructor_arg(constructor);
+            let case_bb = self.curr_fun().create_bb(constructor);
+            case_typs.push(case_typ);
+            case_bbs.push(case_bb);
+        }
+        // > Create switch instruction
+        let mut cases: Vec<(usize, String)> = case_bbs
+            .iter()
+            .enumerate()
+            .map(|(i, bb)| (i, bb.label().to_string()))
+            .collect();
+        let default_label = cases.pop().unwrap().1;
+        self.curr_fun().switch(tag_l, default_label, cases);
+        // > Create case BB
+        for (case_bb, case_typ) in case_bbs.into_iter().zip(case_typs) {
+            let case_label = case_bb.label().to_string();
+            self.curr_fun().add_bb(case_bb);
+            self.curr_fun().set_bb(case_label);
+            if let Some(operand_typ) = case_typ.map(normalize_typ) {
+                let ptr = self
+                    .curr_fun()
+                    .getelemptr(variant_typ.clone(), lhs.clone(), &[0, 1]);
+                let lhs = self.curr_fun().load(IRType::from(&operand_typ), ptr);
+                let ptr = self
+                    .curr_fun()
+                    .getelemptr(variant_typ.clone(), rhs.clone(), &[0, 1]);
+                let rhs = self.curr_fun().load(IRType::from(&operand_typ), ptr);
+                let cond = self.handle_comparison_operation(lhs, rhs, operator, operand_typ);
+                self.curr_fun()
+                    .cond_brk(cond, true_label.clone(), exit_label.clone());
+            } else {
+                self.curr_fun().brk(true_label.clone());
+            }
+        }
+
+        // 6. True BB
+        self.curr_fun().add_bb(true_bb);
+        self.curr_fun().set_bb(true_label);
+        self.curr_fun()
+            .store(IRValue::Pri(IRPri::I1(true)), res_ptr.clone());
+        self.curr_fun().brk(exit_label.clone());
+
+        // 7. Exit BB
+        self.curr_fun().add_bb(exit_bb);
+        self.curr_fun().set_bb(exit_label);
+        self.curr_fun().load(IRType::I1, res_ptr)
     }
 
     fn handle_unit_comparison(&mut self, operator: Operator) -> IRValue {

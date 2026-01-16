@@ -95,6 +95,7 @@ pub enum InstrClass {
     Alloca(IRType),
     CondBrk(IRValue, String, String),
     Brk(String),
+    Switch(IRValue, String, Vec<(IRValue, String)>),
     GetElemPtr(IRType, IRValue, Vec<IRValue>),
     Return(IRValue),
 }
@@ -387,6 +388,18 @@ impl Function {
         self.push_instr(instr);
     }
 
+    pub fn switch(&mut self, value: IRValue, default_label: String, cases: Vec<(usize, String)>) {
+        let cases = cases
+            .into_iter()
+            .map(|(val, label)| (IRValue::Pri(IRPri::I64(val as i64)), label))
+            .collect();
+        let instr = Instr {
+            class: InstrClass::Switch(value, default_label, cases),
+            res: IRValue::Void,
+        };
+        self.push_instr(instr);
+    }
+
     pub fn binop(
         &mut self,
         typ: IRType,
@@ -640,6 +653,13 @@ impl std::fmt::Display for InstrClass {
                 )
             }
             InstrClass::Brk(label) => write!(fmt, "br label %{label}"),
+            InstrClass::Switch(value, default_label, cases) => {
+                write!(fmt, "switch {value}, label %{default_label} [ ")?;
+                cases
+                    .iter()
+                    .try_for_each(|(value, label)| write!(fmt, "{value}, label %{label} "))?;
+                write!(fmt, "]")
+            }
         }
     }
 }

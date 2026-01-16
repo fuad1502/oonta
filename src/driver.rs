@@ -342,7 +342,7 @@ mod test {
 
     #[test]
     fn exec_comparison() {
-        exec("comparison", "1100111");
+        exec("comparison", "11001111011");
     }
 
     fn ll(test_name: &str, opt: bool) {
