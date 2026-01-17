@@ -500,7 +500,9 @@ impl<'a> IRBuilder<'a> {
 
     fn visit_var_expr(&mut self, var_expr: &VarExpr) -> IRValue {
         let mono_name = var_expr.mono_name(self.lexer);
-        let val = self.get_value_from_ctx(&mono_name).unwrap();
+        let val = self
+            .get_value_from_ctx(&mono_name)
+            .unwrap_or_else(|| panic!("'{mono_name}' not found in context"));
         if let IRValue::Global(_, typ) = &val {
             self.curr_fun().load(typ.clone(), val)
         } else {

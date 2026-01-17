@@ -67,6 +67,7 @@ impl CustomTypes {
             .get(name)
             .expect("Only call this method after verifying constructor exists")
             .clone()
+            .map(instantiate_typ)
     }
 
     pub fn get_constructor_idx(&self, name: &str) -> usize {
@@ -101,27 +102,39 @@ impl CustomTypes {
 }
 
 impl Variant {
-    pub fn no_param(name: String, constructors: Vec<Constructor>) -> Self {
+    pub fn new(name: String, params: Vec<usize>, constructors: Vec<Constructor>) -> Self {
         Self {
             name,
-            params: vec![],
+            params,
             constructors,
         }
     }
 }
 
 impl Constructor {
-    pub fn new(name: String, argument: Rc<RefCell<Type>>) -> Self {
-        Self {
-            name,
-            argument: Some(argument),
-        }
+    pub fn new(name: String, argument: Option<Rc<RefCell<Type>>>) -> Self {
+        Self { name, argument }
     }
+}
 
-    pub fn no_arg(name: String) -> Self {
-        Self {
-            name,
-            argument: None,
+fn instantiate_typ(typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
+    match &*typ.borrow() {
+        Type::Primitive(_) => typ.clone(),
+        Type::Variable(Variable::Link(typ)) => instantiate_typ(typ.clone()),
+        Type::Fun(typs) => {
+            let typs = typs.iter().map(|t| instantiate_typ(t.clone())).collect();
+            Rc::new(RefCell::new(Type::Fun(typs)))
+        }
+        Type::Tuple(typs) => {
+            let typs = typs.iter().map(|t| instantiate_typ(t.clone())).collect();
+            Rc::new(RefCell::new(Type::Tuple(typs)))
+        }
+        Type::Custom(name, args) => {
+            let args = args.iter().map(|t| instantiate_typ(t.clone())).collect();
+            Rc::new(RefCell::new(Type::Custom(name.clone(), args)))
+        }
+        Type::Variable(Variable::Unbound(i)) => {
+            Rc::new(RefCell::new(Type::Variable(Variable::Unbound(*i))))
         }
     }
 }

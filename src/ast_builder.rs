@@ -8,7 +8,7 @@ use crate::{
     custom_types::{Constructor, CustomTypes, Variant},
     lexer::Lexer,
     symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
-    typ::{Primitive, Type},
+    typ::{Primitive, Type, Variable},
 };
 
 pub struct AstBuilder<'a> {
@@ -70,9 +70,7 @@ impl<'a> AstBuilder<'a> {
             5 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), true)),
             6 => Stmt::Bind(self.visit_unit_bind(extract_components(&rule.components[0]))),
             7 => Stmt::TypeDecl(self.visit_type_decl(extract_components(&rule.components[0]))),
-            8 => {
-                Stmt::TypeDecl(self.visit_param_type_decl(extract_components(&rule.components[0])))
-            }
+            8 => Stmt::TypeDecl(self.visit_param_type_decl(&rule.components[0])),
             _ => unreachable!(),
         };
         match stmt {
@@ -120,11 +118,42 @@ impl<'a> AstBuilder<'a> {
     fn visit_type_decl(&mut self, components: &[Symbol]) -> Variant {
         let name = self.lexer.str_from_span(extract_span(&components[1]));
         let constructors = self.visit_constructors(components.last().unwrap());
-        Variant::no_param(name.to_string(), constructors)
+        Variant::new(name.to_string(), vec![], constructors)
     }
 
-    fn visit_param_type_decl(&mut self, _components: &[Symbol]) -> Variant {
-        todo!()
+    fn visit_param_type_decl(&mut self, symbol: &Symbol) -> Variant {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            15 | 16 => {
+                let name = self.lexer.str_from_span(extract_span(&rule.components[2]));
+                let constructors = self.visit_constructors(rule.components.last().unwrap());
+                let params = vec![self.type_variable_id(&rule.components[1])];
+                Variant::new(name.to_string(), params, constructors)
+            }
+            17 | 18 => {
+                let name = self.lexer.str_from_span(extract_span(&rule.components[4]));
+                let constructors = self.visit_constructors(rule.components.last().unwrap());
+                let params = self.visit_type_variable_list(&rule.components[2]);
+                Variant::new(name.to_string(), params, constructors)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_type_variable_list(&mut self, symbol: &Symbol) -> Vec<usize> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            22 => {
+                let mut params = self.visit_type_variable_list(&rule.components[0]);
+                let param = self.type_variable_id(&rule.components[2]);
+                params.push(param);
+                params
+            }
+            23 => {
+                vec![self.type_variable_id(&rule.components[0])]
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn visit_expr(&mut self, symbol: &Symbol) -> Rc<RefCell<Expr>> {
@@ -312,12 +341,12 @@ impl<'a> AstBuilder<'a> {
         match rule.number {
             26 => {
                 let name = self.lexer.str_from_span(extract_span(&rule.components[0]));
-                Constructor::no_arg(name.to_string())
+                Constructor::new(name.to_string(), None)
             }
             27 => {
                 let name = self.lexer.str_from_span(extract_span(&rule.components[0]));
                 let typ = self.visit_type_string(&rule.components[2]);
-                Constructor::new(name.to_string(), typ)
+                Constructor::new(name.to_string(), Some(typ))
             }
             _ => unreachable!(),
         }
@@ -338,9 +367,20 @@ impl<'a> AstBuilder<'a> {
                     _ => Rc::new(RefCell::new(Type::Custom(id.to_string(), vec![]))),
                 }
             }
-            30 => todo!(),
-            31 => todo!(),
-            32 => todo!(),
+            30 => {
+                let arg = self.visit_type_string(&rule.components[0]);
+                let id = self.lexer.str_from_span(extract_span(&rule.components[1]));
+                Rc::new(RefCell::new(Type::Custom(id.to_string(), vec![arg])))
+            }
+            31 => {
+                let args = self.visit_type_args(&rule.components[1]);
+                let id = self.lexer.str_from_span(extract_span(&rule.components[1]));
+                Rc::new(RefCell::new(Type::Custom(id.to_string(), args)))
+            }
+            32 => {
+                let id = self.type_variable_id(&rule.components[0]);
+                Rc::new(RefCell::new(Type::Variable(Variable::Unbound(id))))
+            }
             _ => unreachable!(),
         }
     }
@@ -357,6 +397,19 @@ impl<'a> AstBuilder<'a> {
                 self.visit_type_string(&rule.components[0]),
                 self.visit_type_string(&rule.components[2]),
             ],
+            _ => unreachable!(),
+        }
+    }
+
+    fn visit_type_args(&self, symbol: &Symbol) -> Vec<Rc<RefCell<Type>>> {
+        let rule = extract_rule(symbol);
+        match rule.number {
+            35 => {
+                let mut args = self.visit_type_args(&rule.components[0]);
+                args.push(self.visit_type_string(&rule.components[2]));
+                args
+            }
+            36 => vec![self.visit_type_string(&rule.components[0])],
             _ => unreachable!(),
         }
     }
@@ -597,6 +650,12 @@ impl<'a> AstBuilder<'a> {
         } else {
             false
         }
+    }
+
+    fn type_variable_id(&self, type_variable: &Symbol) -> usize {
+        let span = extract_span(type_variable);
+        let var_char = self.lexer.str_from_span(span).chars().last().unwrap();
+        var_char as usize - ('a' as usize)
     }
 }
 
