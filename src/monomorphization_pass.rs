@@ -286,12 +286,12 @@ fn gather_poly_args(
             gather_poly_args(poly_typ, mono_typ, typ_args)
         }
         (Type::Variable(Variable::Unbound(v)), Type::Tuple(_))
-        | (Type::Variable(Variable::Unbound(v)), Type::Primitive(_))
-        | (Type::Variable(Variable::Unbound(v)), Type::Custom(_)) => {
+        | (Type::Variable(Variable::Unbound(v)), Type::Primitive(_)) => {
             typ_args.insert(*v, mono_typ.clone());
         }
         (Type::Fun(poly_typs), Type::Fun(mono_typs))
-        | (Type::Tuple(poly_typs), Type::Tuple(mono_typs)) => {
+        | (Type::Tuple(poly_typs), Type::Tuple(mono_typs))
+        | (Type::Custom(_, poly_typs), Type::Custom(_, mono_typs)) => {
             poly_typs
                 .iter()
                 .zip(mono_typs)
@@ -328,8 +328,15 @@ fn monomorphize_typ(
                 .collect();
             Rc::new(RefCell::new(Type::Tuple(typs)))
         }
+        Type::Custom(name, args) => {
+            let args = args
+                .iter()
+                .map(|arg| monomorphize_typ(arg, typ_args))
+                .collect();
+            Rc::new(RefCell::new(Type::Custom(name.clone(), args)))
+        }
         Type::Variable(Variable::Unbound(var)) => typ_args.get(var).unwrap().clone(),
         Type::Variable(Variable::Link(to)) => monomorphize_typ(to, typ_args),
-        Type::Primitive(_) | Type::Custom(_) => poly_typ.clone(),
+        Type::Primitive(_) => poly_typ.clone(),
     }
 }

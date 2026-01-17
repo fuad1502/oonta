@@ -28,24 +28,37 @@ Comma(",")
 Number("\d\d*")
 Identifier("(\w|_)(\w|\W|\d|_)*")
 ConstructorIdentifier("\W(\w|\W|\d|_)*")
+TypeVariable("'\w")
 
 %RULES
 StmtList = StmtList Stmt | Stmt;
 
-Stmt = VarBind | FunBind | RecFunBind | UnitBind | TypeDecl;
+Stmt = VarBind | FunBind | RecFunBind | UnitBind | TypeDecl | ParameterizedTypeDecl;
 VarBind = Let Identifier Eq Expr;
 FunBind = Let Identifier ParamList Eq Expr;
 RecFunBind = Let Rec Identifier ParamList Eq Expr;
 UnitBind = Let Unit Eq Expr;
 TypeDecl = Type Identifier Eq ConstructorList | Type Identifier Eq Pipe ConstructorList;
+ParameterizedTypeDecl = 
+    Type TypeVariable Identifier Eq ConstructorList |
+    Type TypeVariable Identifier Eq Pipe ConstructorList |
+    Type LeftParen TypeVariableList RightParen Identifier Eq ConstructorList |
+    Type LeftParen TypeVariableList RightParen Identifier Eq Pipe ConstructorList;
 
 ParamList = ParamList Param | Param;
 Param = Identifier;
 
+TypeVariableList = TypeVariableList Comma TypeVariable | TypeVariable;
 ConstructorList = ConstructorList Pipe Constructor | Constructor;
 Constructor = ConstructorIdentifier | ConstructorIdentifier Of TypeString;
-TypeString = LeftParen TypeStringList RightParen  | Identifier;
+TypeString = 
+    LeftParen TypeStringList RightParen |
+    Identifier |
+    TypeString Identifier |
+    LeftParen TypeArgList RightParen Identifier |
+    TypeVariable;
 TypeStringList = TypeStringList Star TypeString | TypeString Star TypeString;
+TypeArgList = TypeArgList Comma TypeString | TypeString;
 
 Expr = 
     Unit |

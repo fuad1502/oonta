@@ -11,8 +11,8 @@ use crate::{
     lexer::Lexer,
     monomorphization_pass::MonoExprs,
     typ::{
-        Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, is_polymorphic,
-        normalize_typ,
+        Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, extract_variant_args,
+        is_polymorphic, link_unbounds, normalize_typ,
     },
 };
 
@@ -571,7 +571,9 @@ impl<'a> IRBuilder<'a> {
             self.push_ctx(cmp_fun_name, None);
             let ret = match &operand_typ {
                 Type::Tuple(typs) => self.handle_tuple_comparison(lhs, rhs, operator, typs),
-                Type::Custom(name) => self.handle_variant_comparison(lhs, rhs, operator, name),
+                Type::Custom(name, args) => {
+                    self.handle_variant_comparison(lhs, rhs, operator, name, args)
+                }
                 _ => unreachable!(),
             };
             self.curr_fun().ret(ret.clone());
@@ -668,7 +670,8 @@ impl<'a> IRBuilder<'a> {
         lhs: IRValue,
         rhs: IRValue,
         operator: Operator,
-        typ_name: &str,
+        ctor_name: &str,
+        variant_args: &[Rc<RefCell<Type>>],
     ) -> IRValue {
         let res_ptr = self.curr_fun().alloca(IRType::I1);
         self.curr_fun()
@@ -721,8 +724,11 @@ impl<'a> IRBuilder<'a> {
         // 5. Compare inner value
         let mut case_bbs = vec![];
         let mut case_typs = vec![];
-        for constructor in self.custom_types.get_constructors(typ_name) {
+        for constructor in self.custom_types.get_constructors(ctor_name) {
             let case_typ = self.custom_types.get_constructor_arg(constructor);
+            if let Some(case_typ) = &case_typ {
+                link_unbounds(case_typ.clone(), variant_args);
+            }
             let case_bb = self.curr_fun().create_bb(constructor);
             case_typs.push(case_typ);
             case_bbs.push(case_bb);
@@ -839,7 +845,9 @@ impl<'a> IRBuilder<'a> {
                 if let Some(patt) = arg
                     && patt.has_literal()
                 {
+                    let variant_args = extract_variant_args(typ).unwrap();
                     let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                    link_unbounds(typ.clone(), &variant_args);
                     let ir_typ = IRType::from(typ.clone());
                     let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
                     let value = self.curr_fun().load(ir_typ, ptr);
@@ -890,7 +898,9 @@ impl<'a> IRBuilder<'a> {
             }
             Pattern::Constructor(span, Some(pattern)) => {
                 let ctor_name = self.lexer.str_from_span(span);
+                let variant_args = extract_variant_args(typ).unwrap();
                 let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                link_unbounds(typ.clone(), &variant_args);
                 let ir_typ = IRType::from(typ.clone());
                 let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
                 let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
