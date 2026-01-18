@@ -31,7 +31,13 @@ impl<'a> TransformApplicationsVisitor<'a> {
 
     fn transform_expr(&mut self, expr: &Rc<RefCell<Expr>>) {
         match &mut *expr.borrow_mut() {
-            Expr::Application(application_expr) => self.transform_application(application_expr),
+            Expr::Application(application_expr) => {
+                self.transform_application(application_expr);
+                application_expr
+                    .binds
+                    .iter()
+                    .for_each(|e| self.transform_expr(e));
+            }
             Expr::Fun(fun_expr) => self.transform_expr(&fun_expr.body),
             Expr::Tuple(tuple_expr) => {
                 tuple_expr

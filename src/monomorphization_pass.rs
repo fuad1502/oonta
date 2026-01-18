@@ -80,7 +80,11 @@ impl<'a> MonoPass<'a> {
     fn transform_poly_applications(&mut self, expr: &Rc<RefCell<Expr>>) {
         match &mut *expr.borrow_mut() {
             Expr::Application(application_expr) => {
-                self.transform_poly_application(application_expr)
+                self.transform_poly_application(application_expr);
+                application_expr
+                    .binds
+                    .iter()
+                    .for_each(|e| self.transform_poly_applications(e));
             }
             Expr::Fun(fun_expr) => self.transform_poly_applications(&fun_expr.body),
             Expr::Tuple(tuple_expr) => {
@@ -117,8 +121,10 @@ impl<'a> MonoPass<'a> {
             Expr::Var(var) => {
                 if self.is_polymorphic(var) {
                     let bind_idx = self.insertion_index(var);
-                    self.mono_binds.forced_mono_binds.push(bind_idx);
-                    self.debug_force_mono(var);
+                    if !self.mono_binds.forced_mono_binds.contains(&bind_idx) {
+                        self.mono_binds.forced_mono_binds.push(bind_idx);
+                        self.debug_force_mono(var);
+                    }
                 }
             }
             Expr::Literal(_) => (),
