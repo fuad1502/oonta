@@ -345,6 +345,26 @@ mod test {
         exec("comparison", "11001111011");
     }
 
+    #[test]
+    fn ll_parametric_variant() {
+        ll("parametric_variant", false);
+    }
+
+    #[test]
+    fn ll_opt_parametric_variant() {
+        ll("parametric_variant", true);
+    }
+
+    #[test]
+    fn obj_parametric_variant() {
+        obj("parametric_variant");
+    }
+
+    #[test]
+    fn exec_parametric_variant() {
+        exec("parametric_variant", "1210");
+    }
+
     fn ll(test_name: &str, opt: bool) {
         let (options, out_path) = if opt {
             let options = vec![CompileOptions::OptimizeIR];
