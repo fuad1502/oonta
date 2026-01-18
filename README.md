@@ -179,6 +179,8 @@ let rec create_lst_aux n acc =
   | 0 -> acc
   | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
 
+let create_lst n = create_lst_aux n Empty
+
 let compare lst_a lst_b =
   if lst_a > lst_b then
     print_int 1
@@ -187,7 +189,6 @@ let compare lst_a lst_b =
   else
     print_int 2
 
-let create_lst n = create_lst_aux n Empty
 let n = read_int ()
 let lst = create_lst n
 let () = compare lst lst
