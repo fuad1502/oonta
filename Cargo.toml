@@ -2,7 +2,7 @@
 name = "oonta"
 version = "0.2.0"
 edition = "2024"
-description = "OCaml to LLVM IR compiler front-end"
+description = "OCaml (subset) to LLVM IR compiler front-end"
 authors = ["Fuad Ismail <fuad1502@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/fuad1502/oonta"
