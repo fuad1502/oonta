@@ -758,7 +758,12 @@ impl<'a> IRBuilder<'a> {
                 self.curr_fun()
                     .cond_brk(cond, true_label.clone(), exit_label.clone());
             } else {
-                self.curr_fun().brk(true_label.clone());
+                match operator {
+                    Operator::Eq | Operator::Gte | Operator::Lte => {
+                        self.curr_fun().brk(true_label.clone())
+                    }
+                    _ => self.curr_fun().brk(exit_label.clone()),
+                }
             }
         }
 
