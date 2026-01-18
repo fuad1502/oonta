@@ -365,7 +365,8 @@ fn gather_poly_args(
         (Type::Variable(Variable::Link(poly_typ)), _) => {
             gather_poly_args(poly_typ, mono_typ, typ_args)
         }
-        (Type::Variable(Variable::Unbound(v)), Type::Tuple(_))
+        (Type::Variable(Variable::Unbound(v)), Type::Custom(_, _))
+        | (Type::Variable(Variable::Unbound(v)), Type::Tuple(_))
         | (Type::Variable(Variable::Unbound(v)), Type::Primitive(_)) => {
             typ_args.insert(*v, mono_typ.clone());
         }
