@@ -13,9 +13,9 @@ dependencies = [
 
 [[package]]
 name = "jlek"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8750bc73088ab6d61e0024ccef152b285f302e614421ccc3ff48aadc0a53d5eb"
+checksum = "bcceca14bda8e0e83a351ea2acf394cc369504283ce4188f5c2ee9e591a0fdf4"
 
 [[package]]
 name = "oonta"
