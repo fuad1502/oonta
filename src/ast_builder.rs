@@ -374,7 +374,7 @@ impl<'a> AstBuilder<'a> {
             }
             31 => {
                 let args = self.visit_type_args(&rule.components[1]);
-                let id = self.lexer.str_from_span(extract_span(&rule.components[1]));
+                let id = self.lexer.str_from_span(extract_span(&rule.components[3]));
                 Rc::new(RefCell::new(Type::Custom(id.to_string(), args)))
             }
             32 => {
