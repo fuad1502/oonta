@@ -11,44 +11,67 @@ use crate::{
     },
     lexer::Lexer,
     terminal_colors::{BLUE, END, YELLOW},
-    typ::{Type, TypeMap, Variable, is_polymorphic},
+    typ::{Primitive, Type, TypeMap, Variable, is_polymorphic},
 };
 
-pub fn monomorphize(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: bool) -> MonoExprs {
-    let mut pass = MonoPass {
-        mono_exprs: MonoExprs::default(),
-        poly_binds: HashMap::new(),
-        debug,
-        type_map,
-        lexer,
-    };
-    pass.visit_binds(ast);
-    pass.mono_exprs
-}
-
-#[derive(Default)]
-pub struct MonoExprs {
-    pub binds: Vec<(String, Rc<RefCell<Expr>>)>,
-}
-
 struct MonoPass<'a> {
-    mono_exprs: MonoExprs,
+    mono_binds: MonoBinds,
     poly_binds: HashMap<&'a str, Rc<RefCell<Expr>>>,
+    binds_to_mono_names: HashMap<&'a str, Vec<String>>,
+    binds_indices: HashMap<&'a str, usize>,
     debug: bool,
     type_map: &'a mut TypeMap,
     lexer: &'a Lexer,
 }
 
+#[derive(Default)]
+pub struct MonoBinds {
+    pub binds: Vec<MonoBind>,
+    pub forced_mono_binds: Vec<usize>,
+}
+
+pub struct MonoBind {
+    pub name: String,
+    pub expr: Rc<RefCell<Expr>>,
+    pub insertion_index: usize,
+}
+
+pub fn monomorphize(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: bool) -> MonoBinds {
+    let mut pass = MonoPass {
+        mono_binds: MonoBinds::default(),
+        poly_binds: HashMap::new(),
+        binds_to_mono_names: HashMap::new(),
+        binds_indices: HashMap::new(),
+        debug,
+        type_map,
+        lexer,
+    };
+    pass.visit_binds(ast);
+    pass.mono_binds
+}
+
 impl<'a> MonoPass<'a> {
     fn visit_binds(&mut self, ast: &Ast) {
-        for bind in &ast.binds {
+        for (i, bind) in ast.binds.iter().enumerate() {
             let typ = self.get_from_type_map(&bind.expr);
+            let name = bind
+                .name
+                .clone()
+                .map(|span| self.lexer.str_from_span(&span));
+            if let Some(name) = name {
+                self.binds_indices.insert(name, i);
+                if let Some(mono_names) = self.binds_to_mono_names.get_mut(name) {
+                    mono_names.clear();
+                }
+            }
             if is_polymorphic(typ) {
-                if let Some(span) = &bind.name {
-                    let name = self.lexer.str_from_span(span);
+                if let Some(name) = name {
                     self.poly_binds.insert(name, bind.expr.clone());
                 }
             } else {
+                if let Some(name) = name {
+                    self.poly_binds.remove(name);
+                }
                 self.transform_poly_applications(&bind.expr);
             }
         }
@@ -91,41 +114,43 @@ impl<'a> MonoPass<'a> {
                     .iter()
                     .for_each(|(_, e)| self.transform_poly_applications(e));
             }
-            Expr::Literal(_) | Expr::Var(_) => (),
+            Expr::Var(var) => {
+                if self.is_polymorphic(var) {
+                    let bind_idx = self.insertion_index(var);
+                    self.mono_binds.forced_mono_binds.push(bind_idx);
+                    self.debug_force_mono(var);
+                }
+            }
+            Expr::Literal(_) => (),
         }
     }
 
     fn transform_poly_application(&mut self, application_expr: &mut ApplicationExpr) {
-        // TODO: Refactor
         let mono_typ = self.get_from_type_map(&application_expr.fun);
-        if let Expr::Var(VarExpr {
-            id: var_id,
-            poly_args: var_poly_args,
-        }) = &mut *application_expr.fun.borrow_mut()
-            && let Some(poly_expr) = self.poly_binds.get(self.lexer.str_from_span(var_id))
-        {
-            let poly_typ = self.get_from_type_map(poly_expr);
-            let mut poly_args = BTreeMap::new();
-            gather_poly_args(&poly_typ, &mono_typ, &mut poly_args);
-            let poly_args_str = poly_args_to_string(&poly_args);
-            var_poly_args.replace(poly_args_str.clone());
+        let mut application_fun = application_expr.fun.borrow_mut();
+        let var = match &mut *application_fun {
+            Expr::Var(var) => var,
+            _ => return,
+        };
+        let poly_expr = match self.poly_binds.get(self.lexer.str_from_span(&var.id)) {
+            Some(expr) => expr,
+            None => return,
+        };
+        let poly_typ = self.get_from_type_map(poly_expr);
 
-            let var = VarExpr {
-                id: var_id.clone(),
-                poly_args: var_poly_args.clone(),
-            };
+        let mut poly_args = BTreeMap::new();
+        gather_poly_args(&poly_typ, &mono_typ, &mut poly_args);
+        let poly_args_str = poly_args_to_string(&poly_args);
+        var.poly_args.replace(poly_args_str.clone());
+
+        if !self.is_monomorphized(var) {
+            self.debug(var, &poly_typ, &mono_typ, &poly_args);
             let mono_name = var.mono_name(self.lexer);
-            let has_monomorphized = self
-                .mono_exprs
-                .binds
-                .iter()
-                .any(|(name, _)| name == &mono_name);
-            if !has_monomorphized {
-                self.debug(&var, &poly_typ, &mono_typ, &poly_args);
-                let mono_expr = self.monomorphize_expr(&poly_expr.clone(), &poly_args, &mono_name);
-                self.mono_exprs.binds.push((mono_name, mono_expr.clone()));
-                self.transform_poly_applications(&mono_expr);
-            }
+            let mono_expr = self.monomorphize_expr(&poly_expr.clone(), &poly_args, &mono_name);
+            let mono_bind = MonoBind::new(mono_name, mono_expr.clone(), self.insertion_index(var));
+            self.mono_binds.binds.push(mono_bind);
+            self.insert_mono_name(var);
+            self.transform_poly_applications(&mono_expr);
         }
     }
 
@@ -260,6 +285,36 @@ impl<'a> MonoPass<'a> {
         self.type_map.insert(expr_ptr, typ);
     }
 
+    fn is_monomorphized(&self, var: &VarExpr) -> bool {
+        let base_name = var.base_name(self.lexer);
+        let mono_name = var.mono_name(self.lexer);
+        self.binds_to_mono_names
+            .get(base_name)
+            .map(|mono_names| mono_names.contains(&mono_name))
+            .unwrap_or(false)
+    }
+
+    fn insertion_index(&self, var: &VarExpr) -> usize {
+        let base_name = var.base_name(self.lexer);
+        *self.binds_indices.get(base_name).unwrap()
+    }
+
+    fn insert_mono_name(&mut self, var: &VarExpr) {
+        let base_name = var.base_name(self.lexer);
+        let mono_name = var.mono_name(self.lexer);
+        if let Some(mono_names) = self.binds_to_mono_names.get_mut(base_name) {
+            mono_names.push(mono_name);
+        } else {
+            self.binds_to_mono_names
+                .insert(base_name, vec![mono_name.clone()]);
+        }
+    }
+
+    fn is_polymorphic(&self, var: &VarExpr) -> bool {
+        let base_name = var.base_name(self.lexer);
+        self.poly_binds.contains_key(base_name)
+    }
+
     fn debug(
         &self,
         var: &VarExpr,
@@ -270,7 +325,7 @@ impl<'a> MonoPass<'a> {
         if self.debug {
             println!(
                 "Monomorphing {YELLOW}'{}' {}{END} into {BLUE}{}{END}:",
-                var.mono_name(self.lexer),
+                var.base_name(self.lexer),
                 poly_typ.borrow(),
                 mono_typ.borrow()
             );
@@ -281,6 +336,13 @@ impl<'a> MonoPass<'a> {
                     v.borrow()
                 )
             });
+        }
+    }
+
+    fn debug_force_mono(&self, var: &VarExpr) {
+        if self.debug {
+            let base_name = var.base_name(self.lexer);
+            println!("{BLUE}'{}'{END} bind forced as monomorphic", base_name);
         }
     }
 }
@@ -308,6 +370,13 @@ fn gather_poly_args(
                 .iter()
                 .zip(mono_typs)
                 .for_each(|(poly_typ, mono_typ)| gather_poly_args(poly_typ, mono_typ, typ_args));
+        }
+        (Type::Variable(Variable::Unbound(v)), Type::Variable(Variable::Unbound(_))) => {
+            // If there is still an unbound variable left, that means it does not matter what type
+            // it is bound to. We'll use integer as default.
+            // TODO: Use available monomorphized expression
+            let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Integer)));
+            typ_args.insert(*v, int_typ);
         }
         _ => (),
     }
@@ -350,5 +419,15 @@ fn monomorphize_typ(
         Type::Variable(Variable::Unbound(var)) => typ_args.get(var).unwrap().clone(),
         Type::Variable(Variable::Link(to)) => monomorphize_typ(to, typ_args),
         Type::Primitive(_) => poly_typ.clone(),
+    }
+}
+
+impl MonoBind {
+    fn new(name: String, expr: Rc<RefCell<Expr>>, insertion_index: usize) -> Self {
+        Self {
+            name,
+            expr,
+            insertion_index,
+        }
     }
 }

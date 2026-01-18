@@ -9,7 +9,7 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
-    monomorphization_pass::MonoExprs,
+    monomorphization_pass::MonoBinds,
     typ::{
         Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, extract_variant_args,
         is_polymorphic, link_unbounds, normalize_typ,
@@ -60,30 +60,27 @@ impl<'a> IRBuilder<'a> {
         builder.populate_builtins()
     }
 
-    pub fn build(mut self, ast: &Ast, mono_exprs: &MonoExprs) -> Module {
-        self.visit_mono_exprs(mono_exprs);
-        self.visit_bindings(ast);
+    pub fn build(mut self, ast: &Ast, mono_inds: &MonoBinds) -> Module {
+        self.visit_bindings(ast, mono_inds);
         self.curr_fun().ret(IRValue::Void);
         self.module
     }
 
-    fn visit_mono_exprs(&mut self, mono_exprs: &MonoExprs) {
-        for (name, expr) in mono_exprs.binds.iter().rev() {
-            let name = Some(name.clone());
-            self.visit_bind(name, &expr.borrow());
-        }
-    }
-
-    fn visit_bindings(&mut self, ast: &Ast) {
-        for binding in &ast.binds {
-            if self.is_polymorphic(binding) {
-                continue;
+    fn visit_bindings(&mut self, ast: &Ast, mono_binds: &MonoBinds) {
+        for (i, binding) in ast.binds.iter().enumerate() {
+            let is_forced_monomorphic = mono_binds.forced_mono_binds.contains(&i);
+            if is_forced_monomorphic || !self.is_polymorphic(binding) {
+                let name = binding
+                    .name
+                    .clone()
+                    .map(|span| self.lexer.str_from_span(&span).to_string());
+                self.visit_bind(name, &binding.expr.borrow());
             }
-            let name = binding
-                .name
-                .clone()
-                .map(|span| self.lexer.str_from_span(&span).to_string());
-            self.visit_bind(name, &binding.expr.borrow());
+            mono_binds
+                .binds
+                .iter()
+                .filter(|bind| bind.insertion_index == i)
+                .for_each(|bind| self.visit_bind(Some(bind.name.clone()), &bind.expr.borrow()));
         }
     }
 
