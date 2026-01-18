@@ -38,8 +38,8 @@ of currently supported language features.
 > [!NOTE]
 > One could argue that with the many OCaml key features currently missing, it
 > is not appropriate to call it "a compiler for a subset of the OCaml
-> language", since it is more akin to simpler dialect in the ML programming
-> languages, such as SML or Caml. However, the implementation and syntax
+> language", since it is more akin to simpler dialects of the ML programming
+> language family, such as SML or Caml. However, the implementation and syntax
 > reference has always been OCaml. Moreover, the final goal is to support as
 > much OCaml features possible.
 
