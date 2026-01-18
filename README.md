@@ -11,6 +11,8 @@
 * [User Guide](#user-guide)
 * [Dependencies](#dependencies)
 * [Feature Highlights](#feature-highlights)
+    * [Supported Ocaml language features](#supported-ocaml-language-features)
+    * [Compile-time monomorphization](#compile-time-monomorphization)
     * [Debug compile phases](#debug-compile-phases)
     * [Error reporting](#error-reporting)
 * [Building from source](#building-from-source)
@@ -18,7 +20,7 @@
 
 ## Introduction
 
-*Oonta* is a compiler front-end for the [OCaml programming
+*Oonta* is a compiler front-end for a subset of the [OCaml programming
 language](https://ocaml.org): it generates [LLVM intermediate representation
 (IR)](https://llvm.org/docs/LangRef.html) from OCaml source code.
 
@@ -27,16 +29,24 @@ language](https://ocaml.org): it generates [LLVM intermediate representation
 and lexing stages. For building the IR, *Oonta* does not depend on the LLVM
 API.
 
+*This project is still a work in progress*, many OCaml features are not yet
+supported. For example, modules, classes and objects are not yet supported.
+Additionally, the runtime does not yet provide a garbage collection service.
+Checkout [this section](#supported-ocaml-language-features) for a complete list
+of currently supported language features.
+
+> [!NOTE]
+> One could argue that with the many OCaml key features currently missing, it
+> is not appropriate to call it "a compiler for a subset of the OCaml
+> language", since it is more akin to simpler dialect in the ML programming
+> languages, such as SML or Caml. However, the implementation and syntax
+> reference has always been OCaml. Moreover, the final goal is to support as
+> much OCaml features possible.
+
 > [!NOTE]
 > This project is part of the ["Compiler
 > Toys"](https://github.com/fuad1502/compiler_toys) project, originally meant
 > as a learning exercise on Compilers.
-
-> [!IMPORTANT]
-> This project is still a work in progress, many OCaml features are not yet
-> supported. For example, modules are not yet supported. Additionally, the
-> runtime does not yet provide a garbage collection service. See the issues tab
-> for the list of work items.
 
 ## Quick Start (Ubuntu)
 
@@ -191,9 +201,9 @@ python3 benchmark/benchmark.py 10000 1 # run the insertion_sort.ml benchmark on 
 python3 benchmark/benchmark.py 1000000 2 # run the polymorphic_compare.ml benchmark on a list with 10000 elements
 ```
 
-> [!IMPORTANT] 
-> Currently, for running the benchmark on large inputs, increase the stack size
-> limit with `ulimit -s unlimited`
+> [!WARNING] 
+> Currently, for running the merge sort benchmark on large inputs, increase the
+> stack size limit with `ulimit -s unlimited`
 
 On my Ubuntu machine (AMD Ryzen™ 7 7700X × 16), with `ocamlopt` version 5.4.0
 and LLVM version 20.1.8, the result of running the above benchmarks are as
@@ -264,84 +274,158 @@ build the runtime from source by following the guide
 
 ## Feature Highlights
 
+### Supported OCaml language features
+
+> [!NOTE]
+> This list is by no means complete. Unsupported features were intentionally
+> not fully expanded for brevity.
+
+| Feature                        | Supported?                             |
+|--------------------------------|----------------------------------------|
+| Basic data types               | Integers and booleans                  |
+| Type inference                 | Yes                                    |
+| Global definitions             | Yes                                    |
+| Local definitions              | Yes                                    |
+| First class functions          | Yes                                    |
+| Closures                       | Yes                                    |
+| Partial applications           | Yes                                    |
+| Recursive definitions          | Yes                                    |
+| Parametric variants            | Yes                                    |
+| Polymorphic functions          | Yes                                    |
+| Anonymous functions            | Yes                                    |
+| Conditionals                   | Yes                                    |
+| Pattern matching               | Yes. However, no exhaustiveness check. |
+| Mutually recursive definitions | No                                     |
+| Records                        | No                                     |
+| Imperative features            | No                                     |
+| Exceptions                     | No                                     |
+| Lazy expressions               | No                                     |
+| Module system                  | No                                     |
+| Classes and objects            | No                                     |
+| Labeled arguments              | No                                     |
+| Polymorphic variants           | No                                     |
+
+### Compile-time monomorphization
+
+Oonta handles (parameteric) polymorphic function through compile-time
+monomorphization. It therefore generates more optimized code, at the cost of
+code bloat. This also allows removing the need for pointer tag.
+
+For example, for the following OCaml code:
+
+```ocaml
+let apply_on_greater f x y =
+  if x > y then
+    f x
+  else
+    f y
+
+let () = apply_on_greater print_int 3 2
+```
+It will monomorphize `apply_on_greater` with type `(('a -> 'b) -> 'a -> 'a ->
+'b)` into `((int -> unit) -> int -> int -> unit)` and generate the following
+LLVM IR:
+
+```llvm
+define ccc void @oonta.apply_on_greater.int.unit.fun(ptr %f, i64 %x, i64 %y, ptr %env)  {
+entry:
+    %r = icmp sgt i64 %x, %y
+    br i1 %r, label %then, label %else
+then:
+    %r0 = load ptr, ptr %f
+    call ccc void %r0(i64 %x, ptr %f)
+    br label %follow
+else:
+    %r1 = load ptr, ptr %f
+    call ccc void %r1(i64 %y, ptr %f)
+    br label %follow
+follow:
+    ret void
+}
+```
 ### Debug compile phases
 
 Use the `--verbose / -v` option to debug each compile phase.
 
 ```sh
 cat << EOF > main.ml
-let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
-let () = print_int (factorial 5)
+let apply_on_greater f x y =
+  if x > y then
+    f x
+  else
+    f y
+
+let () = apply_on_greater print_int 3 2
 EOF
-oonta --exec -v main.ml
+oonta --exec --opt -v main.ml
 ```
 
 ```text
 => Lexing & Parsing Start
-=> Lexing & Parsing End (1 ms)
+=> Lexing & Parsing End (0 ms)
 => Build AST Start
-factorial = 
+apply_on_greater = 
 FunExpr
-├─▸ parameters: [x]
+├─▸ parameters: [f, x, y]
 ├─▸ captures: []
-├─▸ recursive: yes
+├─▸ recursive: no
 └─▸ body:
     CondExpr
     ├─▸ condition:
     │   BinOpExpr
-    │   ├─▸ operator: <=
+    │   ├─▸ operator: >
     │   ├─▸ lhs:
     │   │   VarExpr ("x")
     │   └─▸ rhs:
-    │       LiteralExpr (1)
+    │       VarExpr ("y")
     ├─▸ then expr:
-    │   LiteralExpr (1)
+    │   ApplicationExpr
+    │   ├─▸ function:
+    │   │   VarExpr ("f")
+    │   └─▸ binds:
+    │       └─▸ (0)
+    │           VarExpr ("x")
     └─▸ else expr:
-        BinOpExpr
-        ├─▸ operator: *
-        ├─▸ lhs:
-        │   VarExpr ("x")
-        └─▸ rhs:
-            ApplicationExpr
-            ├─▸ function:
-            │   VarExpr ("factorial")
-            └─▸ binds:
-                └─▸ (0)
-                    BinOpExpr
-                    ├─▸ operator: -
-                    ├─▸ lhs:
-                    │   VarExpr ("x")
-                    └─▸ rhs:
-                        LiteralExpr (1)
+        ApplicationExpr
+        ├─▸ function:
+        │   VarExpr ("f")
+        └─▸ binds:
+            └─▸ (0)
+                VarExpr ("y")
 
 () = 
 ApplicationExpr
 ├─▸ function:
-│   VarExpr ("print_int")
+│   VarExpr ("apply_on_greater")
 └─▸ binds:
-    └─▸ (0)
-        ApplicationExpr
-        ├─▸ function:
-        │   VarExpr ("factorial")
-        └─▸ binds:
-            └─▸ (0)
-                LiteralExpr (5)
+    ├─▸ (0)
+    │   VarExpr ("print_int")
+    ├─▸ (1)
+    │   LiteralExpr (3)
+    └─▸ (2)
+        LiteralExpr (2)
 
 => Build AST End (0 ms)
 => Resolve types Start
 Top level bindings:
-factorial: (int -> int)
+apply_on_greater: (('a -> 'b) -> 'a -> 'a -> 'b)
 => Resolve types End (0 ms)
 => Transform application expressions Start
 => Transform application expressions End (0 ms)
+=> Monomorphization Start
+Monomorphing 'apply_on_greater' (('a -> 'b) -> 'a -> 'a -> 'b) into ((int -> unit) -> int -> int -> unit):
+'a -> int
+'b -> unit
+=> Monomorphization End (0 ms)
 => Build LLVM module Start
 => Build LLVM module End (0 ms)
 => Write LLVM module Start
-=> Write LLVM module End (1 ms)
+=> Write LLVM module End (0 ms)
+=> Optimize LLVM IR Start
+=> Optimize LLVM IR End (12 ms)
 => LLVM backend Start
-=> LLVM backend End (117 ms)
+=> LLVM backend End (37 ms)
 ```
-
 ### Error reporting
 
 ```text
