@@ -34,9 +34,9 @@ API.
 
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
-> supported. For example, polymorphic functions and types, and modules are not
-> yet supported. Additionally, the runtime does not yet provide a garbage
-> collection service. See the issues tab for the list of work items.
+> supported. For example, modules are not yet supported. Additionally, the
+> runtime does not yet provide a garbage collection service. See the issues tab
+> for the list of work items.
 
 ## Quick Start (Ubuntu)
 
