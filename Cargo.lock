@@ -19,7 +19,7 @@ checksum = "bcceca14bda8e0e83a351ea2acf394cc369504283ce4188f5c2ee9e591a0fdf4"
 
 [[package]]
 name = "oonta"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "jjik",
 ]
