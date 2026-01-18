@@ -16,11 +16,14 @@ def generate_input_file(numbers):
         for num in numbers:
             file.write(f"{num}\n")
 
-def generate_output_ref_file(numbers):
+def generate_output_ref_file(numbers, benchmark_idx):
     with open("benchmark/output.ref.txt", "w") as file:
-        numbers.sort() 
-        for num in numbers:
-            file.write(f"{num}")
+        if benchmark_idx == 2:
+            file.write("0")
+        else:
+            numbers.sort() 
+            for num in numbers:
+                file.write(f"{num}")
 
 def generate_oonta_benchmark_binary(benchmark_src):
     subprocess.run(["cargo", "run", "--", f"benchmark/{benchmark_src}", "-o",
@@ -46,8 +49,8 @@ def benchmark(binary):
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage      : python3 benchmark/benchmark.py <num of list elements to sort> <benchmark idx>")
-        print("Benchmarks :\n\t0. Merge sort\n\t1. Insertion sort")
+        print("Usage      : python3 benchmark/benchmark.py <num of list elements> <benchmark idx>")
+        print("Benchmarks :\n\t0. Merge sort\n\t1. Insertion sort\n\t2. Compare")
         print("Tips       : run in the repository root directory")
         sys.exit(1)
 
@@ -57,13 +60,15 @@ def main():
         benchmark_src = "merge_sort.ml"
     elif benchmark_idx == 1:
         benchmark_src = "insertion_sort.ml"
+    elif benchmark_idx == 2:
+        benchmark_src = "polymorphic_compare.ml"
     else:
         print(f"Invalid benchmark idx ({benchmark_idx})")
         sys.exit(1)
     print(f"Benchmarking: {benchmark_src}")
 
     generate_input_file(numbers)
-    generate_output_ref_file(numbers)
+    generate_output_ref_file(numbers, benchmark_idx)
     generate_ocamlopt_benchmark_binary(benchmark_src)
     generate_oonta_benchmark_binary(benchmark_src)
     ref_time = benchmark("./benchmark/ocamlopt.out")
