@@ -952,6 +952,22 @@ mod test {
     }
 
     #[test]
+    fn parametric_variant() {
+        assert_type_of_last_bind(
+            "type 'a list = Empty | Cat of ('a * 'a list) let x = Cat (1, Empty)",
+            "int list",
+        );
+    }
+
+    #[test]
+    fn multi_parametric_variant() {
+        assert_type_of_last_bind(
+            "type ('a, 'b) pair_list = Empty | Cat of (('a * 'b) * ('a, 'b) pair_list) let x = Cat ((1, 2), Empty)",
+            "(int, int) pair_list",
+        );
+    }
+
+    #[test]
     fn unbind_var() {
         let e = assert_error("let x = y");
 
