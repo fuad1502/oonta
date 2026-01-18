@@ -9,10 +9,10 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
     lexer::Lexer,
-    monomorphization_pass::MonoExprs,
+    monomorphization_pass::MonoBinds,
     typ::{
-        Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, is_polymorphic,
-        normalize_typ,
+        Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, extract_variant_args,
+        is_polymorphic, link_unbounds, normalize_typ,
     },
 };
 
@@ -60,30 +60,27 @@ impl<'a> IRBuilder<'a> {
         builder.populate_builtins()
     }
 
-    pub fn build(mut self, ast: &Ast, mono_exprs: &MonoExprs) -> Module {
-        self.visit_mono_exprs(mono_exprs);
-        self.visit_bindings(ast);
+    pub fn build(mut self, ast: &Ast, mono_inds: &MonoBinds) -> Module {
+        self.visit_bindings(ast, mono_inds);
         self.curr_fun().ret(IRValue::Void);
         self.module
     }
 
-    fn visit_mono_exprs(&mut self, mono_exprs: &MonoExprs) {
-        for (name, expr) in mono_exprs.binds.iter().rev() {
-            let name = Some(name.clone());
-            self.visit_bind(name, &expr.borrow());
-        }
-    }
-
-    fn visit_bindings(&mut self, ast: &Ast) {
-        for binding in &ast.binds {
-            if self.is_polymorphic(binding) {
-                continue;
+    fn visit_bindings(&mut self, ast: &Ast, mono_binds: &MonoBinds) {
+        for (i, binding) in ast.binds.iter().enumerate() {
+            let is_forced_monomorphic = mono_binds.forced_mono_binds.contains(&i);
+            if is_forced_monomorphic || !self.is_polymorphic(binding) {
+                let name = binding
+                    .name
+                    .clone()
+                    .map(|span| self.lexer.str_from_span(&span).to_string());
+                self.visit_bind(name, &binding.expr.borrow());
             }
-            let name = binding
-                .name
-                .clone()
-                .map(|span| self.lexer.str_from_span(&span).to_string());
-            self.visit_bind(name, &binding.expr.borrow());
+            mono_binds
+                .binds
+                .iter()
+                .filter(|bind| bind.insertion_index == i)
+                .for_each(|bind| self.visit_bind(Some(bind.name.clone()), &bind.expr.borrow()));
         }
     }
 
@@ -500,7 +497,9 @@ impl<'a> IRBuilder<'a> {
 
     fn visit_var_expr(&mut self, var_expr: &VarExpr) -> IRValue {
         let mono_name = var_expr.mono_name(self.lexer);
-        let val = self.get_value_from_ctx(&mono_name).unwrap();
+        let val = self
+            .get_value_from_ctx(&mono_name)
+            .unwrap_or_else(|| panic!("'{mono_name}' not found in context"));
         if let IRValue::Global(_, typ) = &val {
             self.curr_fun().load(typ.clone(), val)
         } else {
@@ -571,7 +570,9 @@ impl<'a> IRBuilder<'a> {
             self.push_ctx(cmp_fun_name, None);
             let ret = match &operand_typ {
                 Type::Tuple(typs) => self.handle_tuple_comparison(lhs, rhs, operator, typs),
-                Type::Custom(name) => self.handle_variant_comparison(lhs, rhs, operator, name),
+                Type::Custom(name, args) => {
+                    self.handle_variant_comparison(lhs, rhs, operator, name, args)
+                }
                 _ => unreachable!(),
             };
             self.curr_fun().ret(ret.clone());
@@ -668,7 +669,8 @@ impl<'a> IRBuilder<'a> {
         lhs: IRValue,
         rhs: IRValue,
         operator: Operator,
-        typ_name: &str,
+        ctor_name: &str,
+        variant_args: &[Rc<RefCell<Type>>],
     ) -> IRValue {
         let res_ptr = self.curr_fun().alloca(IRType::I1);
         self.curr_fun()
@@ -721,8 +723,11 @@ impl<'a> IRBuilder<'a> {
         // 5. Compare inner value
         let mut case_bbs = vec![];
         let mut case_typs = vec![];
-        for constructor in self.custom_types.get_constructors(typ_name) {
+        for constructor in self.custom_types.get_constructors(ctor_name) {
             let case_typ = self.custom_types.get_constructor_arg(constructor);
+            if let Some(case_typ) = &case_typ {
+                link_unbounds(case_typ.clone(), variant_args);
+            }
             let case_bb = self.curr_fun().create_bb(constructor);
             case_typs.push(case_typ);
             case_bbs.push(case_bb);
@@ -753,7 +758,12 @@ impl<'a> IRBuilder<'a> {
                 self.curr_fun()
                     .cond_brk(cond, true_label.clone(), exit_label.clone());
             } else {
-                self.curr_fun().brk(true_label.clone());
+                match operator {
+                    Operator::Eq | Operator::Gte | Operator::Lte => {
+                        self.curr_fun().brk(true_label.clone())
+                    }
+                    _ => self.curr_fun().brk(exit_label.clone()),
+                }
             }
         }
 
@@ -839,7 +849,9 @@ impl<'a> IRBuilder<'a> {
                 if let Some(patt) = arg
                     && patt.has_literal()
                 {
+                    let variant_args = extract_variant_args(typ).unwrap();
                     let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                    link_unbounds(typ.clone(), &variant_args);
                     let ir_typ = IRType::from(typ.clone());
                     let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
                     let value = self.curr_fun().load(ir_typ, ptr);
@@ -890,7 +902,9 @@ impl<'a> IRBuilder<'a> {
             }
             Pattern::Constructor(span, Some(pattern)) => {
                 let ctor_name = self.lexer.str_from_span(span);
+                let variant_args = extract_variant_args(typ).unwrap();
                 let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
+                link_unbounds(typ.clone(), &variant_args);
                 let ir_typ = IRType::from(typ.clone());
                 let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
                 let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);

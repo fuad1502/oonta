@@ -16,7 +16,7 @@ use crate::{
 pub enum Type {
     Fun(Vec<Rc<RefCell<Type>>>),
     Tuple(Vec<Rc<RefCell<Type>>>),
-    Custom(String),
+    Custom(String, Vec<Rc<RefCell<Type>>>),
     Primitive(Primitive),
     Variable(Variable),
 }
@@ -308,10 +308,14 @@ impl<'a> TypeResolver<'a> {
         let expr_span = construct_expr.span.clone();
         let cons_name = self.lexer.str_from_span(&construct_expr.cons);
         if let Some(variant_typ) = self.custom_types.get_constructor_typ(cons_name) {
+            let mut unbound_typ_map = HashMap::new();
+            let variant_typ = self.instantiate_typ(variant_typ, &mut unbound_typ_map);
             let arg_typ = self.custom_types.get_constructor_arg(cons_name);
             match (&construct_expr.arg, arg_typ) {
                 (Some(expr), Some(arg_typ)) => {
                     let typ = self.infer_type(&expr.borrow())?;
+                    let variant_args = extract_variant_args(variant_typ.clone()).unwrap();
+                    link_unbounds(arg_typ.clone(), &variant_args);
                     unify_typ(typ, arg_typ)?;
                 }
                 (None, Some(_)) => return Err(Error::WrongConstructorArgument(expr_span, 1)),
@@ -364,7 +368,7 @@ impl<'a> TypeResolver<'a> {
         unbound_typ_map: &mut HashMap<usize, Rc<RefCell<Type>>>,
     ) -> Rc<RefCell<Type>> {
         match &*typ.borrow() {
-            Type::Primitive(_) | Type::Custom(_) => typ.clone(),
+            Type::Primitive(_) => typ.clone(),
             Type::Variable(Variable::Link(typ)) => {
                 self.instantiate_typ(typ.clone(), unbound_typ_map)
             }
@@ -381,6 +385,13 @@ impl<'a> TypeResolver<'a> {
                     .map(|t| self.instantiate_typ(t.clone(), unbound_typ_map))
                     .collect();
                 Rc::new(RefCell::new(Type::Tuple(typs)))
+            }
+            Type::Custom(name, args) => {
+                let args = args
+                    .iter()
+                    .map(|t| self.instantiate_typ(t.clone(), unbound_typ_map))
+                    .collect();
+                Rc::new(RefCell::new(Type::Custom(name.clone(), args)))
             }
             Type::Variable(Variable::Unbound(i)) => {
                 if let Some(typ) = unbound_typ_map.get(i) {
@@ -429,9 +440,13 @@ impl<'a> TypeResolver<'a> {
             Some(typ) => typ,
             None => return Err(Error::UnboundConstructor(cons)),
         };
+        let mut unbound_typ_map = HashMap::new();
+        let variant_typ = self.instantiate_typ(variant_typ, &mut unbound_typ_map);
         match (arg, self.custom_types.get_constructor_arg(name)) {
             (Some(arg), Some(typ)) => {
                 let arg_typ = self.instantiate_pattern_typ(arg)?;
+                let variant_args = extract_variant_args(variant_typ.clone()).unwrap();
+                link_unbounds(typ.clone(), &variant_args);
                 unify_typ(arg_typ, typ)?;
             }
             (None, None) => (),
@@ -525,7 +540,6 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) -> Result<(), E
             Ok(())
         }
         (Type::Primitive(prim_a), Type::Primitive(prim_b)) if prim_a == prim_b => Ok(()),
-        (Type::Custom(name_a), Type::Custom(name_b)) if name_a == name_b => Ok(()),
         (Type::Variable(Variable::Unbound(var_a)), Type::Variable(Variable::Unbound(var_b)))
             if var_a == var_b =>
         {
@@ -537,6 +551,14 @@ fn unify_typ(typ_a: Rc<RefCell<Type>>, typ_b: Rc<RefCell<Type>>) -> Result<(), E
             typs_a
                 .into_iter()
                 .zip(typs_b)
+                .try_for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b))
+        }
+        (Type::Custom(name_a, args_a), Type::Custom(name_b, args_b))
+            if name_a == name_b && args_a.len() == args_b.len() =>
+        {
+            args_a
+                .into_iter()
+                .zip(args_b)
                 .try_for_each(|(typ_a, typ_b)| unify_typ(typ_a, typ_b))
         }
         _ => Err(Error::CannotUnifyType(typ_a, typ_b)),
@@ -574,9 +596,9 @@ fn rename(typ: Rc<RefCell<Type>>) -> Rc<RefCell<Type>> {
     typ
 }
 
-fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
+pub fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
     match &*typ.borrow() {
-        Type::Fun(typs) | Type::Tuple(typs) => {
+        Type::Fun(typs) | Type::Tuple(typs) | Type::Custom(_, typs) => {
             let mut unbounds = vec![];
             for typ in typs {
                 unbounds.append(&mut gather_unbounds(typ.clone()));
@@ -585,7 +607,7 @@ fn gather_unbounds(typ: Rc<RefCell<Type>>) -> Vec<Rc<RefCell<Type>>> {
         }
         Type::Variable(Variable::Unbound(_)) => vec![typ.clone()],
         Type::Variable(Variable::Link(to)) => gather_unbounds(to.clone()),
-        Type::Primitive(_) | Type::Custom(_) => vec![],
+        Type::Primitive(_) => vec![],
     }
 }
 
@@ -613,13 +635,37 @@ pub fn extract_tuple_typs(typ: Rc<RefCell<Type>>) -> Option<Vec<Rc<RefCell<Type>
     }
 }
 
+pub fn extract_variant_args(typ: Rc<RefCell<Type>>) -> Option<Vec<Rc<RefCell<Type>>>> {
+    if let Type::Custom(_, args) = normalize_typ(typ) {
+        Some(args.clone())
+    } else {
+        None
+    }
+}
+
 pub fn is_polymorphic(typ: Rc<RefCell<Type>>) -> bool {
     match &*typ.borrow() {
-        Type::Fun(typs) | Type::Tuple(typs) => typs.iter().cloned().any(is_polymorphic),
+        Type::Fun(typs) | Type::Tuple(typs) | Type::Custom(_, typs) => {
+            typs.iter().cloned().any(is_polymorphic)
+        }
         Type::Variable(Variable::Link(typ)) => is_polymorphic(typ.clone()),
         Type::Variable(Variable::Unbound(_)) => true,
-        Type::Custom(_) => false,
         Type::Primitive(_) => false,
+    }
+}
+
+pub fn link_unbounds(typ: Rc<RefCell<Type>>, to_typs: &[Rc<RefCell<Type>>]) {
+    let unbounds_from_typ = gather_unbounds(typ);
+    for unbound in unbounds_from_typ {
+        bind(unbound.clone(), to_typs[unbound_id(&unbound)].clone());
+    }
+}
+
+fn unbound_id(typ: &Rc<RefCell<Type>>) -> usize {
+    if let Type::Variable(Variable::Unbound(id)) = &*typ.borrow() {
+        *id
+    } else {
+        panic!("Only use this function on unbound types")
     }
 }
 
@@ -671,7 +717,22 @@ impl std::fmt::Display for Type {
                 Primitive::Bool => write!(fmt, "bool"),
                 Primitive::Unit => write!(fmt, "unit"),
             },
-            Type::Custom(name) => write!(fmt, "{name}"),
+            Type::Custom(name, typs) => {
+                if typs.len() > 1 {
+                    write!(fmt, "(")?;
+                    for (i, typ) in typs.iter().enumerate() {
+                        if i == typs.len() - 1 {
+                            write!(fmt, "{}", typ.borrow())?;
+                        } else {
+                            write!(fmt, "{}, ", typ.borrow())?;
+                        }
+                    }
+                    write!(fmt, ") ")?;
+                } else if typs.len() == 1 {
+                    write!(fmt, "{} ", typs[0].borrow())?;
+                }
+                write!(fmt, "{name}")
+            }
             Type::Variable(Variable::Link(typ)) => write!(fmt, "{}", typ.borrow()),
         }
     }
@@ -888,6 +949,22 @@ mod test {
     #[test]
     fn polymorphic_compare() {
         assert_type_of_last_bind("let f x y = x < y", "('a -> 'a -> bool)");
+    }
+
+    #[test]
+    fn parametric_variant() {
+        assert_type_of_last_bind(
+            "type 'a list = Empty | Cat of ('a * 'a list) let x = Cat (1, Empty)",
+            "int list",
+        );
+    }
+
+    #[test]
+    fn multi_parametric_variant() {
+        assert_type_of_last_bind(
+            "type ('a, 'b) pair_list = Empty | Cat of (('a * 'b) * ('a, 'b) pair_list) let x = Cat ((1, 2), Empty)",
+            "(int, int) pair_list",
+        );
     }
 
     #[test]

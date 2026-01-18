@@ -13,7 +13,7 @@ use crate::{
     custom_types::CustomTypes,
     ir_builder::{IRBuilder, ir::Module},
     lexer::Lexer,
-    monomorphization_pass::{MonoExprs, monomorphize},
+    monomorphization_pass::{MonoBinds, monomorphize},
     parser::Parser,
     symbol::Symbol,
     terminal_colors::{BLUE, END, GREEN, RED, YELLOW},
@@ -95,13 +95,13 @@ impl Driver {
         self.dbg_end();
 
         self.dbg_start("Monomorphization");
-        let mono_exprs = monomorphize(&ast, &mut type_map, &lexer, self.debug_phases);
+        let mono_binds = monomorphize(&ast, &mut type_map, &lexer, self.debug_phases);
         self.dbg_end();
 
         self.dbg_start("Build LLVM module");
         let module = build_module(
             &ast,
-            &mono_exprs,
+            &mono_binds,
             &type_map,
             &custom_types,
             &lexer,
@@ -185,14 +185,14 @@ fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {
 
 fn build_module(
     ast: &Ast,
-    mono_exprs: &MonoExprs,
+    mono_binds: &MonoBinds,
     type_map: &TypeMap,
     custom_types: &CustomTypes,
     lexer: &Lexer,
     is_top_level: bool,
 ) -> Module {
     let ir_builder = IRBuilder::new(type_map, custom_types, lexer, is_top_level);
-    ir_builder.build(ast, mono_exprs)
+    ir_builder.build(ast, mono_binds)
 }
 
 fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
@@ -342,7 +342,27 @@ mod test {
 
     #[test]
     fn exec_comparison() {
-        exec("comparison", "11001111011");
+        exec("comparison", "1100010111100110001011");
+    }
+
+    #[test]
+    fn ll_parametric_variant() {
+        ll("parametric_variant", false);
+    }
+
+    #[test]
+    fn ll_opt_parametric_variant() {
+        ll("parametric_variant", true);
+    }
+
+    #[test]
+    fn obj_parametric_variant() {
+        obj("parametric_variant");
+    }
+
+    #[test]
+    fn exec_parametric_variant() {
+        exec("parametric_variant", "1210");
     }
 
     fn ll(test_name: &str, opt: bool) {

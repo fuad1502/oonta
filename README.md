@@ -34,9 +34,9 @@ API.
 
 > [!IMPORTANT]
 > This project is still a work in progress, many OCaml features are not yet
-> supported. For example, polymorphic functions and types, and modules are not
-> yet supported. Additionally, the runtime does not yet provide a garbage
-> collection service. See the issues tab for the list of work items.
+> supported. For example, modules are not yet supported. Additionally, the
+> runtime does not yet provide a garbage collection service. See the issues tab
+> for the list of work items.
 
 ## Quick Start (Ubuntu)
 
@@ -117,7 +117,7 @@ let lst = create_lst n
 let sorted_lst = merge_sort lst
 let () = map print_int sorted_lst
 ```
-And insertion sort (`benchmark/insertion_sort.ml`):
+Insertion sort (`benchmark/insertion_sort.ml`):
 
 ```ocaml
 type list =
@@ -157,12 +157,38 @@ let lst = create_lst n
 let sorted_lst = insertion_sort lst
 let () = map print_int sorted_lst
 ```
+And polymorphic list comparison (`benchmark/polymorphic_compare.ml`):
+
+```ocaml
+type 'a list =
+  | Empty
+  | Cat of ('a * 'a list)
+
+let rec create_lst_aux n acc =
+  match n with
+  | 0 -> acc
+  | _ -> create_lst_aux (n - 1) (Cat (read_int (), acc))
+
+let compare lst_a lst_b =
+  if lst_a > lst_b then
+    print_int 1
+  else if lst_a = lst_b then
+    print_int 0
+  else
+    print_int 2
+
+let create_lst n = create_lst_aux n Empty
+let n = read_int ()
+let lst = create_lst n
+let () = compare lst lst
+```
 Execute the following command inside the repository root folder to run the
 benchmarks.
 
 ```sh
 python3 benchmark/benchmark.py 1000000 0 # run the merge_sort.ml benchmark on a list with 1 million elements
-python3 benchmark/benchmark.py 10000 0 # run the insertion_sort.ml benchmark on a list with 10000 elements
+python3 benchmark/benchmark.py 10000 1 # run the insertion_sort.ml benchmark on a list with 10000 elements
+python3 benchmark/benchmark.py 1000000 2 # run the polymorphic_compare.ml benchmark on a list with 10000 elements
 ```
 
 > [!IMPORTANT] 
@@ -183,6 +209,11 @@ Benchmarking: insertion_sort.ml
 Elapsed time (./benchmark/ocamlopt.out): 0.1325 seconds
 Elapsed time (./benchmark/oonta.out): 0.3481 seconds
 > 262.68% slower
+
+Benchmarking: polymorphic_compare.ml
+Elapsed time (./benchmark/ocamlopt.out): 0.1026 seconds
+Elapsed time (./benchmark/oonta.out): 0.0635 seconds
+> 38.14% faster
 ```
 ## User Guide
 
