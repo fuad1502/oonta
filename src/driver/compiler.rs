@@ -9,7 +9,7 @@ use crate::driver::terminal_colors::{BLUE, END, GREEN, RED, YELLOW};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::pass::build_ast::AstBuilder;
-use crate::pass::currying::transform_applications;
+use crate::pass::currying::curry_applications;
 use crate::pass::ir_generation::IRBuilder;
 use crate::pass::ir_generation::ir::Module;
 use crate::pass::monomorphization::{MonoBinds, monomorphize};
@@ -87,8 +87,8 @@ impl Compiler {
         }
         self.dbg_end();
 
-        self.dbg_start("Transform application expressions");
-        transform_applications(&ast, &mut type_map, &lexer, self.debug_phases);
+        self.dbg_start("Currying expressions");
+        curry_applications(&ast, &mut type_map, &lexer, self.debug_phases);
         self.dbg_end();
 
         self.dbg_start("Monomorphization");
