@@ -56,7 +56,7 @@ Options:
   -h, --help                    Display this information. 
   -o <file>, --output <file>    Write output to file.
   -t, --top-level               Output main function instead of caml_main.
-  -O, --opt                         Optimize LLVM IR output.
+  -O, --opt                     Optimize LLVM IR output.
   -c, --compile                 Compile LLVM IR to object file using LLVM.
   -e, --exec                    Compile LLVM IR to executable. Turning this
                                 option on implicitly turns on both '-t' and
