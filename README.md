@@ -407,12 +407,12 @@ ApplicationExpr
         LiteralExpr (2)
 
 => Build AST End (0 ms)
-=> Resolve types Start
+=> Infer types Start
 Top level bindings:
 apply_on_greater: (('a -> 'b) -> 'a -> 'a -> 'b)
-=> Resolve types End (0 ms)
-=> Transform application expressions Start
-=> Transform application expressions End (0 ms)
+=> Infer types End (0 ms)
+=> Currying expressions Start
+=> Currying expressions End (0 ms)
 => Monomorphization Start
 Monomorphing 'apply_on_greater' (('a -> 'b) -> 'a -> 'a -> 'b) into ((int -> unit) -> int -> int -> unit):
 'a -> int

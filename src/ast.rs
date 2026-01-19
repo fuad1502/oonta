@@ -1,8 +1,12 @@
 mod ast_printer;
 
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use crate::{ast::ast_printer::AstPrinter, custom_types::Variant, lexer::Lexer, symbol::Span};
+use crate::ast::ast_printer::AstPrinter;
+use crate::lexer::Lexer;
+use crate::symbol::Span;
+use crate::typ::custom_types::Variant;
 
 #[derive(Default)]
 pub struct Ast {

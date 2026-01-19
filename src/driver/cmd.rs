@@ -1,5 +1,7 @@
-use crate::terminal_colors::{END, RED};
-use std::{collections::HashMap, env::Args};
+use std::collections::HashMap;
+use std::env::Args;
+
+use crate::utils::terminal_colors::{END, RED};
 
 pub struct Cmd {
     pub options: HashMap<CmdOptions, Option<String>>,
