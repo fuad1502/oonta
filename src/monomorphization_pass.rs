@@ -19,6 +19,7 @@ struct MonoPass<'a> {
     poly_binds: HashMap<&'a str, Rc<RefCell<Expr>>>,
     binds_to_mono_names: HashMap<&'a str, Vec<String>>,
     binds_indices: HashMap<&'a str, usize>,
+    renamed_captures: HashMap<&'a str, String>,
     debug: bool,
     type_map: &'a mut TypeMap,
     lexer: &'a Lexer,
@@ -42,6 +43,7 @@ pub fn monomorphize(ast: &Ast, type_map: &mut TypeMap, lexer: &Lexer, debug: boo
         poly_binds: HashMap::new(),
         binds_to_mono_names: HashMap::new(),
         binds_indices: HashMap::new(),
+        renamed_captures: HashMap::new(),
         debug,
         type_map,
         lexer,
@@ -73,6 +75,7 @@ impl<'a> MonoPass<'a> {
                     self.poly_binds.remove(name);
                 }
                 self.transform_poly_applications(&bind.expr);
+                self.renamed_captures.clear();
             }
         }
     }
@@ -86,7 +89,14 @@ impl<'a> MonoPass<'a> {
                     .iter()
                     .for_each(|e| self.transform_poly_applications(e));
             }
-            Expr::Fun(fun_expr) => self.transform_poly_applications(&fun_expr.body),
+            Expr::Fun(fun_expr) => {
+                self.transform_poly_applications(&fun_expr.body);
+                for capture in fun_expr.captures.iter_mut() {
+                    if let Some(rename) = self.renamed_captures.remove(&capture[..]) {
+                        *capture = rename;
+                    }
+                }
+            }
             Expr::Tuple(tuple_expr) => {
                 tuple_expr
                     .elements
@@ -158,7 +168,11 @@ impl<'a> MonoPass<'a> {
             self.mono_binds.binds.push(mono_bind);
             self.insert_mono_name(var);
             self.transform_poly_applications(&mono_expr);
+            self.renamed_captures.clear();
         }
+
+        self.renamed_captures
+            .insert(var.base_name(self.lexer), var.mono_name(self.lexer));
     }
 
     fn monomorphize_expr(
