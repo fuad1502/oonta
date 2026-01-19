@@ -1,11 +1,11 @@
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use crate::{
-    ast::{ApplicationExpr, Ast, Expr},
-    lexer::Lexer,
-    symbol::Span,
-    typ::{TypeMap, extract_fun_typs},
-};
+use crate::ast::{ApplicationExpr, Ast, Expr};
+use crate::lexer::Lexer;
+use crate::pass::type_inference::TypeMap;
+use crate::symbol::Span;
+use crate::typ::extract_fun_typs;
 
 struct TransformApplicationsVisitor<'a> {
     debug: bool,

@@ -1,24 +1,24 @@
-use std::{
-    fs::File,
-    io::BufWriter,
-    path::{Path, PathBuf},
-    process::Command,
-    time::Instant,
-};
+pub mod cmd;
+pub mod terminal_colors;
 
-use crate::{
-    application_visitor::transform_applications,
-    ast::{Ast, Expr},
-    ast_builder::AstBuilder,
-    custom_types::CustomTypes,
-    ir_builder::{IRBuilder, ir::Module},
-    lexer::Lexer,
-    monomorphization_pass::{MonoBinds, monomorphize},
-    parser::Parser,
-    symbol::Symbol,
-    terminal_colors::{BLUE, END, GREEN, RED, YELLOW},
-    typ::{self, TypeMap, TypeResolver},
-};
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::Instant;
+
+use crate::ast::{Ast, Expr};
+use crate::driver::terminal_colors::{BLUE, END, GREEN, RED, YELLOW};
+use crate::lexer::Lexer;
+use crate::parser::Parser;
+use crate::pass::build_ast::AstBuilder;
+use crate::pass::currying::transform_applications;
+use crate::pass::ir_generation::IRBuilder;
+use crate::pass::ir_generation::ir::Module;
+use crate::pass::monomorphization::{MonoBinds, monomorphize};
+use crate::pass::type_inference::{self, TypeMap, TypeResolver};
+use crate::symbol::Symbol;
+use crate::typ::custom_types::CustomTypes;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub enum CompileOptions {
@@ -165,7 +165,7 @@ fn resolve_types(
     lexer: &Lexer,
     ast: &Ast,
     custom_types: &CustomTypes,
-) -> Result<TypeMap, typ::Error> {
+) -> Result<TypeMap, type_inference::Error> {
     let type_resolver = TypeResolver::new(custom_types, lexer);
     type_resolver.resolve_types(ast)
 }

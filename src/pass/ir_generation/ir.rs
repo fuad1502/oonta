@@ -1,15 +1,11 @@
-use core::fmt::Formatter;
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    io::Write,
-    rc::Rc,
-};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::fmt::Formatter;
+use std::io::Write;
+use std::rc::Rc;
 
-use crate::{
-    ast::Operator,
-    typ::{Primitive, Type, Variable, normalize_typ},
-};
+use crate::ast::Operator;
+use crate::typ::{Primitive, Type, Variable, normalize_typ};
 
 #[derive(Default)]
 pub struct Module {

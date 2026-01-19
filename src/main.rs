@@ -1,13 +1,13 @@
 use std::{env, path::PathBuf, process::ExitCode};
 
 use oonta::{
-    cmd::CmdOptions,
     driver::CompileOptions,
-    terminal_colors::{END, RED},
+    driver::cmd::CmdOptions,
+    driver::terminal_colors::{END, RED},
 };
 
 fn main() -> ExitCode {
-    let cmd = match oonta::cmd::parse_arguments(env::args()) {
+    let cmd = match oonta::driver::cmd::parse_arguments(env::args()) {
         Ok(cmd) => cmd,
         Err(e) => {
             eprintln!("{e}");
@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     };
 
     if cmd.options.contains_key(&CmdOptions::Help) {
-        println!("{}", oonta::cmd::print_help());
+        println!("{}", oonta::driver::cmd::print_help());
         return ExitCode::SUCCESS;
     }
 

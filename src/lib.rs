@@ -1,12 +1,7 @@
-mod application_visitor;
-mod ast;
-mod ast_builder;
-pub mod cmd;
-mod custom_types;
 pub mod driver;
-mod ir_builder;
-mod monomorphization_pass;
-pub mod terminal_colors;
+
+mod ast;
+mod pass;
 mod typ;
 
 #[rustfmt::skip]

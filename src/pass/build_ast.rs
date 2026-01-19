@@ -1,15 +1,15 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 
-use crate::{
-    ast::{
-        ApplicationExpr, Ast, Bind, CondExpr, ConstructExpr, Expr, LetInExpr, LiteralExpr,
-        Operator, Pattern, PatternMatchExpr, Stmt, TupleExpr,
-    },
-    custom_types::{Constructor, CustomTypes, Variant},
-    lexer::Lexer,
-    symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass},
-    typ::{Primitive, Type, Variable},
+use crate::ast::{
+    ApplicationExpr, Ast, Bind, CondExpr, ConstructExpr, Expr, LetInExpr, LiteralExpr, Operator,
+    Pattern, PatternMatchExpr, Stmt, TupleExpr,
 };
+use crate::lexer::Lexer;
+use crate::symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass};
+use crate::typ::custom_types::{Constructor, CustomTypes, Variant};
+use crate::typ::{Primitive, Type, Variable};
 
 pub struct AstBuilder<'a> {
     lexer: &'a Lexer,

@@ -1,19 +1,19 @@
-use core::convert::From;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::{
-    ast::{
-        ApplicationExpr, Ast, BinOpExpr, Bind, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
-        LiteralExpr, Operator, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
-    },
-    custom_types::CustomTypes,
-    ir_builder::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module},
-    lexer::Lexer,
-    monomorphization_pass::MonoBinds,
-    typ::{
-        Primitive, Type, TypeMap, extract_fun_typs, extract_tuple_typs, extract_variant_args,
-        is_polymorphic, link_unbounds, normalize_typ,
-    },
+use crate::ast::{
+    ApplicationExpr, Ast, BinOpExpr, Bind, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+    LiteralExpr, Operator, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
+};
+use crate::lexer::Lexer;
+use crate::pass::ir_generation::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module};
+use crate::pass::monomorphization::MonoBinds;
+use crate::pass::type_inference::TypeMap;
+use crate::typ::custom_types::CustomTypes;
+use crate::typ::{
+    Primitive, Type, extract_fun_typs, extract_tuple_typs, extract_variant_args, is_polymorphic,
+    link_unbounds, normalize_typ,
 };
 
 pub mod ir;

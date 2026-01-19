@@ -1,18 +1,15 @@
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    rc::Rc,
-};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
-use crate::{
-    ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
-        PatternMatchExpr, TupleExpr, VarExpr,
-    },
-    lexer::Lexer,
-    terminal_colors::{BLUE, END, YELLOW},
-    typ::{Primitive, Type, TypeMap, Variable, is_polymorphic},
+use crate::ast::{
+    ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+    PatternMatchExpr, TupleExpr, VarExpr,
 };
+use crate::driver::terminal_colors::{BLUE, END, YELLOW};
+use crate::lexer::Lexer;
+use crate::pass::type_inference::TypeMap;
+use crate::typ::{Primitive, Type, Variable, is_polymorphic};
 
 struct MonoPass<'a> {
     mono_binds: MonoBinds,

@@ -1,11 +1,9 @@
-use crate::{
-    ast::{
-        ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
-        LiteralExpr, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
-    },
-    lexer::Lexer,
-    terminal_colors::{BLUE, END, YELLOW},
+use crate::ast::{
+    ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
+    LiteralExpr, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
 };
+use crate::driver::terminal_colors::{BLUE, END, YELLOW};
+use crate::lexer::Lexer;
 
 pub struct AstPrinter<'a> {
     pub lexer: &'a Lexer,
