@@ -13,7 +13,7 @@ use crate::pass::currying::transform_applications;
 use crate::pass::ir_generation::IRBuilder;
 use crate::pass::ir_generation::ir::Module;
 use crate::pass::monomorphization::{MonoBinds, monomorphize};
-use crate::pass::type_inference::{self, TypeMap, TypeResolver};
+use crate::pass::type_inference::{self, TypeInferer, TypeMap};
 use crate::symbol::Symbol;
 use crate::typ::custom_types::CustomTypes;
 
@@ -77,8 +77,8 @@ impl Compiler {
         }
         self.dbg_end();
 
-        self.dbg_start("Resolve types");
-        let mut type_map = match resolve_types(&lexer, &ast, &custom_types) {
+        self.dbg_start("Infer types");
+        let mut type_map = match infer_types(&lexer, &ast, &custom_types) {
             Ok(type_map) => type_map,
             Err(e) => return Err(e.report(&lexer)),
         };
@@ -158,13 +158,13 @@ fn build_ast(lexer: &Lexer, cst_root: &Symbol) -> (Ast, CustomTypes) {
     ast_builder.build(cst_root)
 }
 
-fn resolve_types(
+fn infer_types(
     lexer: &Lexer,
     ast: &Ast,
     custom_types: &CustomTypes,
 ) -> Result<TypeMap, type_inference::Error> {
-    let type_resolver = TypeResolver::new(custom_types, lexer);
-    type_resolver.resolve_types(ast)
+    let type_inferer = TypeInferer::new(custom_types, lexer);
+    type_inferer.infer_typs(ast)
 }
 
 fn print_global_types(ast: &Ast, type_map: &TypeMap, lexer: &Lexer) {

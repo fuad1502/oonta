@@ -27,7 +27,7 @@ struct Context {
     childrens: HashMap<*const Expr, Rc<RefCell<Context>>>,
 }
 
-pub struct TypeResolver<'a> {
+pub struct TypeInferer<'a> {
     type_map: TypeMap,
     main_context: Rc<RefCell<Context>>,
     local_context: Option<(*const Expr, Rc<RefCell<Context>>)>,
@@ -50,10 +50,10 @@ pub enum Error {
 
 type TypeResult = Result<Rc<RefCell<Type>>, Error>;
 
-impl<'a> TypeResolver<'a> {
+impl<'a> TypeInferer<'a> {
     pub fn new(custom_types: &'a CustomTypes, lexer: &'a Lexer) -> Self {
         let main_context = Rc::new(RefCell::new(Context::default()));
-        let resolver = Self {
+        let inferer = Self {
             type_map: TypeMap::default(),
             main_context,
             local_context: None,
@@ -62,10 +62,10 @@ impl<'a> TypeResolver<'a> {
             custom_types,
             lexer,
         };
-        resolver.insert_builtins_to_main_context()
+        inferer.insert_builtins_to_main_context()
     }
 
-    pub fn resolve_types(mut self, ast: &Ast) -> Result<TypeMap, Error> {
+    pub fn infer_typs(mut self, ast: &Ast) -> Result<TypeMap, Error> {
         for binding in &ast.binds {
             self.var_id_in_local_ctx = 0;
             let typ = self.infer_type(&binding.expr.borrow())?;
@@ -669,7 +669,7 @@ mod test {
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::pass::build_ast::AstBuilder;
-    use crate::pass::type_inference::{Error, TypeMap, TypeResolver};
+    use crate::pass::type_inference::{Error, TypeInferer, TypeMap};
     use crate::typ::custom_types::CustomTypes;
 
     #[test]
@@ -904,7 +904,7 @@ mod test {
     fn assert_type_of_last_bind(src: &str, expect_type: &str) {
         let mut lexer = Lexer::from_source_str(src);
         let (ast, custom_types) = build_ast(&mut lexer).unwrap();
-        let type_map = resolve_types(&ast, &custom_types, &lexer).unwrap();
+        let type_map = infer_typs(&ast, &custom_types, &lexer).unwrap();
         let type_str = get_last_bind_typ_str(&ast, &type_map);
         assert_eq!(expect_type, &type_str)
     }
@@ -912,7 +912,7 @@ mod test {
     fn assert_error(src: &str) -> Error {
         let mut lexer = Lexer::from_source_str(src);
         let (ast, custom_types) = build_ast(&mut lexer).unwrap();
-        match resolve_types(&ast, &custom_types, &lexer) {
+        match infer_typs(&ast, &custom_types, &lexer) {
             Result::Ok(_) => panic!("expect error"),
             Result::Err(e) => e,
         }
@@ -925,13 +925,9 @@ mod test {
         Ok(ast_builder.build(&cst_root))
     }
 
-    fn resolve_types(
-        ast: &Ast,
-        custom_types: &CustomTypes,
-        lexer: &Lexer,
-    ) -> Result<TypeMap, Error> {
-        let type_resolver = TypeResolver::new(custom_types, lexer);
-        type_resolver.resolve_types(ast)
+    fn infer_typs(ast: &Ast, custom_types: &CustomTypes, lexer: &Lexer) -> Result<TypeMap, Error> {
+        let type_inferer = TypeInferer::new(custom_types, lexer);
+        type_inferer.infer_typs(ast)
     }
 
     fn get_last_bind_typ_str(ast: &Ast, type_map: &TypeMap) -> String {
