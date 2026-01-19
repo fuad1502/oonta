@@ -6,7 +6,6 @@ use crate::ast::{
     ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
     LiteralExpr, Pattern, PatternMatchExpr, TupleExpr,
 };
-use crate::driver::terminal_colors::{END, RED};
 use crate::lexer::Lexer;
 use crate::symbol::Span;
 use crate::typ::custom_types::CustomTypes;
@@ -14,6 +13,7 @@ use crate::typ::{
     Primitive, Type, Variable, does_returns_fun, extract_variant_args, gather_unbounds,
     link_unbounds,
 };
+use crate::utils::terminal_colors::{END, RED};
 
 #[derive(Default)]
 pub struct TypeMap {

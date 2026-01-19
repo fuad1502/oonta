@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::env::Args;
 
-use crate::driver::terminal_colors::{END, RED};
+use crate::utils::terminal_colors::{END, RED};
 
 pub struct Cmd {
     pub options: HashMap<CmdOptions, Option<String>>,

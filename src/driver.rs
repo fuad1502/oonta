@@ -2,11 +2,10 @@ use std::{env, path::PathBuf, process::ExitCode};
 
 use crate::driver::cmd::{CmdOptions, parse_arguments, print_help};
 use crate::driver::compiler::{CompileOptions, compile};
-use crate::driver::terminal_colors::{END, RED};
+use crate::utils::terminal_colors::{END, RED};
 
 mod cmd;
 mod compiler;
-pub mod terminal_colors;
 
 pub fn run() -> ExitCode {
     let cmd = match parse_arguments(env::args()) {

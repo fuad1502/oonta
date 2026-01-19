@@ -5,7 +5,6 @@ use std::process::Command;
 use std::time::Instant;
 
 use crate::ast::{Ast, Expr};
-use crate::driver::terminal_colors::{BLUE, END, GREEN, RED, YELLOW};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::pass::build_ast::AstBuilder;
@@ -16,6 +15,7 @@ use crate::pass::monomorphization::{MonoBinds, monomorphize};
 use crate::pass::type_inference::{self, TypeInferer, TypeMap};
 use crate::symbol::Symbol;
 use crate::typ::custom_types::CustomTypes;
+use crate::utils::terminal_colors::{BLUE, END, GREEN, RED, YELLOW};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub enum CompileOptions {

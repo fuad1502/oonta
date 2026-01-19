@@ -6,10 +6,10 @@ use crate::ast::{
     ApplicationExpr, Ast, BinOpExpr, CondExpr, ConstructExpr, Expr, FunExpr, LetInExpr,
     PatternMatchExpr, TupleExpr, VarExpr,
 };
-use crate::driver::terminal_colors::{BLUE, END, YELLOW};
 use crate::lexer::Lexer;
 use crate::pass::type_inference::TypeMap;
 use crate::typ::{Primitive, Type, Variable, is_polymorphic};
+use crate::utils::terminal_colors::{BLUE, END, YELLOW};
 
 struct MonoPass<'a> {
     mono_binds: MonoBinds,

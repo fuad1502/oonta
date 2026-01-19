@@ -3,6 +3,7 @@ pub mod driver;
 mod ast;
 mod pass;
 mod typ;
+mod utils;
 
 #[rustfmt::skip]
 mod lexer {
