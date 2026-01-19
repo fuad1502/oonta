@@ -533,7 +533,7 @@ impl<'a> IRBuilder<'a> {
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {
         match literal_expr {
             LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I64(*value)),
-            LiteralExpr::Unit(_) => IRValue::Void,
+            LiteralExpr::Unit(_) => IRValue::Pri(IRPri::I1(false)),
         }
     }
 
@@ -545,10 +545,11 @@ impl<'a> IRBuilder<'a> {
         operand_typ: Type,
     ) -> IRValue {
         match operand_typ {
-            Type::Primitive(Primitive::Integer) | Type::Primitive(Primitive::Bool) => {
+            Type::Primitive(Primitive::Integer)
+            | Type::Primitive(Primitive::Bool)
+            | Type::Primitive(Primitive::Unit) => {
                 return self.curr_fun().binop(IRType::I1, lhs, rhs, operator);
             }
-            Type::Primitive(Primitive::Unit) => return self.handle_unit_comparison(operator),
             Type::Fun(_) => panic!("Cannot compare functions"),
             Type::Variable(_) => unreachable!(),
             _ => (),
@@ -778,14 +779,6 @@ impl<'a> IRBuilder<'a> {
         self.curr_fun().add_bb(exit_bb);
         self.curr_fun().set_bb(exit_label);
         self.curr_fun().load(IRType::I1, res_ptr)
-    }
-
-    fn handle_unit_comparison(&mut self, operator: Operator) -> IRValue {
-        match operator {
-            Operator::Eq | Operator::Lte | Operator::Gte => IRValue::Pri(IRPri::I1(true)),
-            Operator::Lt | Operator::Gt => IRValue::Pri(IRPri::I1(false)),
-            _ => unreachable!(),
-        }
     }
 
     fn conjunction(&mut self, mut conditions: Vec<IRValue>) -> IRValue {

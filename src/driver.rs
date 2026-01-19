@@ -365,6 +365,26 @@ mod test {
         exec("parametric_variant", "1210");
     }
 
+    #[test]
+    fn ll_unit_list() {
+        ll("unit_list", false);
+    }
+
+    #[test]
+    fn ll_opt_unit_list() {
+        ll("unit_list", true);
+    }
+
+    #[test]
+    fn obj_unit_list() {
+        obj("unit_list");
+    }
+
+    #[test]
+    fn exec_unit_list() {
+        exec("unit_list", "311000");
+    }
+
     fn ll(test_name: &str, opt: bool) {
         let (options, out_path) = if opt {
             let options = vec![CompileOptions::OptimizeIR];

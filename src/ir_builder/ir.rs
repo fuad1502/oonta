@@ -731,10 +731,13 @@ impl From<&Type> for IRType {
         match typ {
             Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
-            Type::Primitive(Primitive::Bool) => IRType::I1,
-            Type::Primitive(Primitive::Unit) => IRType::Void,
-            Type::Variable(Variable::Unbound(_)) => todo!(),
-            Type::Variable(Variable::Link(_)) => panic!(""),
+            Type::Primitive(Primitive::Bool) | Type::Primitive(Primitive::Unit) => IRType::I1,
+            Type::Variable(Variable::Unbound(_)) => {
+                unreachable!("Type should be monomorphized in IR building phase")
+            }
+            Type::Variable(Variable::Link(_)) => {
+                unreachable!("Type should be normalized to reach here")
+            }
         }
     }
 }
