@@ -152,7 +152,8 @@ impl<'a> MonoPass<'a> {
         if !self.is_monomorphized(var) {
             self.debug(var, &poly_typ, &mono_typ, &poly_args);
             let mono_name = var.mono_name(self.lexer);
-            let mono_expr = self.monomorphize_expr(&poly_expr.clone(), &poly_args, &mono_name);
+            let mono_expr = self.monomorphize_expr(&poly_expr.clone(), &poly_args);
+            self.replace_recursive_bind_name(mono_expr.clone(), mono_name.clone());
             let mono_bind = MonoBind::new(mono_name, mono_expr.clone(), self.insertion_index(var));
             self.mono_binds.binds.push(mono_bind);
             self.insert_mono_name(var);
@@ -164,7 +165,6 @@ impl<'a> MonoPass<'a> {
         &mut self,
         poly_expr: &Rc<RefCell<Expr>>,
         poly_args: &BTreeMap<usize, Rc<RefCell<Type>>>,
-        current_bind: &str,
     ) -> Rc<RefCell<Expr>> {
         let expr = match &*poly_expr.borrow() {
             Expr::Fun(FunExpr {
@@ -175,12 +175,9 @@ impl<'a> MonoPass<'a> {
                 span,
             }) => {
                 let params = params.clone();
-                let body = self.monomorphize_expr(body, poly_args, current_bind);
+                let body = self.monomorphize_expr(body, poly_args);
                 let captures = captures.clone();
-                let mut recursive_bind = recursive_bind.clone();
-                if let Some(bind) = &mut recursive_bind {
-                    *bind = current_bind.to_string();
-                }
+                let recursive_bind = recursive_bind.clone();
                 let span = span.clone();
                 Expr::Fun(FunExpr {
                     params,
@@ -191,10 +188,10 @@ impl<'a> MonoPass<'a> {
                 })
             }
             Expr::Application(ApplicationExpr { fun, binds, span }) => {
-                let fun = self.monomorphize_expr(fun, poly_args, current_bind);
+                let fun = self.monomorphize_expr(fun, poly_args);
                 let binds = binds
                     .iter()
-                    .map(|b| self.monomorphize_expr(b, poly_args, current_bind))
+                    .map(|b| self.monomorphize_expr(b, poly_args))
                     .collect();
                 let span = span.clone();
                 Expr::Application(ApplicationExpr { fun, binds, span })
@@ -205,9 +202,9 @@ impl<'a> MonoPass<'a> {
                 no,
                 span,
             }) => {
-                let cond = self.monomorphize_expr(cond, poly_args, current_bind);
-                let yes = self.monomorphize_expr(yes, poly_args, current_bind);
-                let no = self.monomorphize_expr(no, poly_args, current_bind);
+                let cond = self.monomorphize_expr(cond, poly_args);
+                let yes = self.monomorphize_expr(yes, poly_args);
+                let no = self.monomorphize_expr(no, poly_args);
                 let span = span.clone();
                 Expr::Conditional(CondExpr {
                     cond,
@@ -221,15 +218,10 @@ impl<'a> MonoPass<'a> {
                 branches,
                 span,
             }) => {
-                let matched = self.monomorphize_expr(matched, poly_args, current_bind);
+                let matched = self.monomorphize_expr(matched, poly_args);
                 let branches = branches
                     .iter()
-                    .map(|b| {
-                        (
-                            b.0.clone(),
-                            self.monomorphize_expr(&b.1, poly_args, current_bind),
-                        )
-                    })
+                    .map(|b| (b.0.clone(), self.monomorphize_expr(&b.1, poly_args)))
                     .collect();
                 let span = span.clone();
                 Expr::PatternMatch(PatternMatchExpr {
@@ -241,15 +233,15 @@ impl<'a> MonoPass<'a> {
             Expr::Tuple(TupleExpr { elements, span }) => {
                 let elements = elements
                     .iter()
-                    .map(|e| self.monomorphize_expr(e, poly_args, current_bind))
+                    .map(|e| self.monomorphize_expr(e, poly_args))
                     .collect();
                 let span = span.clone();
                 Expr::Tuple(TupleExpr { elements, span })
             }
             Expr::BinOp(BinOpExpr { op, lhs, rhs, span }) => {
                 let op = *op;
-                let lhs = self.monomorphize_expr(lhs, poly_args, current_bind);
-                let rhs = self.monomorphize_expr(rhs, poly_args, current_bind);
+                let lhs = self.monomorphize_expr(lhs, poly_args);
+                let rhs = self.monomorphize_expr(rhs, poly_args);
                 let span = span.clone();
                 Expr::BinOp(BinOpExpr { op, lhs, rhs, span })
             }
@@ -257,17 +249,13 @@ impl<'a> MonoPass<'a> {
                 let cons = cons.clone();
                 let arg = arg
                     .clone()
-                    .map(|expr| self.monomorphize_expr(&expr, poly_args, current_bind));
+                    .map(|expr| self.monomorphize_expr(&expr, poly_args));
                 let span = span.clone();
                 Expr::Construction(ConstructExpr { cons, arg, span })
             }
             Expr::LetIn(LetInExpr { bind, expr, span }) => {
-                let current_bind = self.lexer.str_from_span(&bind.0);
-                let bind = (
-                    bind.0.clone(),
-                    self.monomorphize_expr(&bind.1, poly_args, current_bind),
-                );
-                let expr = self.monomorphize_expr(expr, poly_args, current_bind);
+                let bind = (bind.0.clone(), self.monomorphize_expr(&bind.1, poly_args));
+                let expr = self.monomorphize_expr(expr, poly_args);
                 let span = span.clone();
                 Expr::LetIn(LetInExpr { bind, expr, span })
             }
@@ -279,6 +267,14 @@ impl<'a> MonoPass<'a> {
         let typ = monomorphize_typ(&poly_typ, poly_args);
         self.insert_into_type_map(&expr, typ);
         expr
+    }
+
+    fn replace_recursive_bind_name(&self, expr: Rc<RefCell<Expr>>, mono_name: String) {
+        if let Expr::Fun(fun_expr) = &mut *expr.borrow_mut()
+            && let Some(name) = &mut fun_expr.recursive_bind
+        {
+            *name = mono_name;
+        }
     }
 
     fn get_from_type_map(&self, expr: &Rc<RefCell<Expr>>) -> Rc<RefCell<Type>> {
