@@ -235,6 +235,8 @@ fn create_executable(path: &Path) -> Result<PathBuf, String> {
         path.to_str().unwrap(),
         "-loonta_runtime",
     ]);
+    #[cfg(target_os = "windows")]
+    cmd.args(["-Xlinker", "/DEFAULTLIB:legacy_stdio_definitions.lib"]);
     execute_command(cmd)?;
     Ok(executable)
 }
