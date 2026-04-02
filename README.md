@@ -283,7 +283,7 @@ build the runtime from source by following the guide
 
 | Feature                        | Supported?                             |
 |--------------------------------|----------------------------------------|
-| Basic data types               | Integers and booleans                  |
+| Basic data types               | Integers, float and booleans           |
 | Type inference                 | Yes                                    |
 | Global definitions             | Yes                                    |
 | Local definitions              | Yes                                    |
