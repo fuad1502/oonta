@@ -7,7 +7,13 @@ use crate::ast::{
     Pattern, PatternMatchExpr, Stmt, TupleExpr,
 };
 use crate::lexer::Lexer;
-use crate::symbol::{NonTerminal, Rule, Span, Symbol, Terminal, TerminalClass};
+use crate::symbol::{
+    ApplicationRules, ArgRules, BranchRules, BranchesRules, ConstructorListRules, ConstructorRules,
+    ExprListRules, ExprRules, NonTerminal, ParamListRules, ParameterizedTypeDeclRules,
+    PatternRules, PatternsRules, Rule, RuleIDs, SingularPatternRules, Span, StmtListRules,
+    StmtRules, Symbol, Terminal, TerminalClass, TypeArgListRules, TypeStringListRules,
+    TypeStringRules, TypeVariableListRules,
+};
 use crate::typ::custom_types::{Constructor, CustomTypes, Variant};
 use crate::typ::{Primitive, Type, Variable};
 
@@ -50,28 +56,36 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_stmts(&mut self, cst_root: &Symbol) {
         let rule = extract_rule(cst_root);
-        match rule.number {
-            1 => {
+        match StmtListRules::try_from(&rule.id).unwrap() {
+            StmtListRules::Rule0 => {
                 self.visit_stmts(&rule.components[0]);
                 self.visit_stmt(&rule.components[1]);
             }
-            2 => {
+            StmtListRules::Rule1 => {
                 self.visit_stmt(&rule.components[0]);
             }
-            _ => unreachable!(),
         }
     }
 
     fn visit_stmt(&mut self, symbol: &Symbol) {
         let rule = extract_rule(symbol);
-        let stmt = match rule.number {
-            3 => Stmt::Bind(self.visit_var_bind(extract_components(&rule.components[0]))),
-            4 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), false)),
-            5 => Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), true)),
-            6 => Stmt::Bind(self.visit_unit_bind(extract_components(&rule.components[0]))),
-            7 => Stmt::TypeDecl(self.visit_type_decl(extract_components(&rule.components[0]))),
-            8 => Stmt::TypeDecl(self.visit_param_type_decl(&rule.components[0])),
-            _ => unreachable!(),
+        let stmt = match StmtRules::try_from(&rule.id).unwrap() {
+            StmtRules::Rule0 => {
+                Stmt::Bind(self.visit_var_bind(extract_components(&rule.components[0])))
+            }
+            StmtRules::Rule1 => {
+                Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), false))
+            }
+            StmtRules::Rule2 => {
+                Stmt::Bind(self.visit_fun_bind(extract_components(&rule.components[0]), true))
+            }
+            StmtRules::Rule3 => {
+                Stmt::Bind(self.visit_unit_bind(extract_components(&rule.components[0])))
+            }
+            StmtRules::Rule4 => {
+                Stmt::TypeDecl(self.visit_type_decl(extract_components(&rule.components[0])))
+            }
+            StmtRules::Rule5 => Stmt::TypeDecl(self.visit_param_type_decl(&rule.components[0])),
         };
         match stmt {
             Stmt::Bind(bind) => self.ast.insert_stmt(bind),
@@ -123,36 +137,34 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_param_type_decl(&mut self, symbol: &Symbol) -> Variant {
         let rule = extract_rule(symbol);
-        match rule.number {
-            15 | 16 => {
+        match ParameterizedTypeDeclRules::try_from(&rule.id).unwrap() {
+            ParameterizedTypeDeclRules::Rule0 | ParameterizedTypeDeclRules::Rule1 => {
                 let name = self.lexer.str_from_span(extract_span(&rule.components[2]));
                 let constructors = self.visit_constructors(rule.components.last().unwrap());
                 let params = vec![self.type_variable_id(&rule.components[1])];
                 Variant::new(name.to_string(), params, constructors)
             }
-            17 | 18 => {
+            ParameterizedTypeDeclRules::Rule2 | ParameterizedTypeDeclRules::Rule3 => {
                 let name = self.lexer.str_from_span(extract_span(&rule.components[4]));
                 let constructors = self.visit_constructors(rule.components.last().unwrap());
                 let params = self.visit_type_variable_list(&rule.components[2]);
                 Variant::new(name.to_string(), params, constructors)
             }
-            _ => unreachable!(),
         }
     }
 
     fn visit_type_variable_list(&mut self, symbol: &Symbol) -> Vec<usize> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            22 => {
+        match TypeVariableListRules::try_from(&rule.id).unwrap() {
+            TypeVariableListRules::Rule0 => {
                 let mut params = self.visit_type_variable_list(&rule.components[0]);
                 let param = self.type_variable_id(&rule.components[2]);
                 params.push(param);
                 params
             }
-            23 => {
+            TypeVariableListRules::Rule1 => {
                 vec![self.type_variable_id(&rule.components[0])]
             }
-            _ => unreachable!(),
         }
     }
 
@@ -164,18 +176,40 @@ impl<'a> AstBuilder<'a> {
     }
 
     fn visit_non_terminal_expr(&mut self, non_terminal: &NonTerminal) -> Rc<RefCell<Expr>> {
-        match non_terminal.rule.number {
-            37..=46 | 83..=86 | 88..=89 => self.visit_expr(&non_terminal.rule.components[0]),
-            47 | 48 | 87 => self.visit_construction_expr(&non_terminal.rule.components),
-            49 => self.visit_if_then_else_expr(&non_terminal.rule.components),
-            50 => self.visit_tuple_expr(&non_terminal.rule.components),
-            53 => self.visit_anonymous_fun(&non_terminal.rule.components),
-            54 => self.visit_expr(&non_terminal.rule.components[1]),
-            55 | 56 => self.visit_let_in_expr(&non_terminal.rule.components),
-            57 | 58 => self.visit_pattern_match_expr(&non_terminal.rule.components),
-            71..=79 => self.visit_binop_expr(&non_terminal.rule.components),
-            80 => self.visit_append_application(&non_terminal.rule.components),
-            81 | 82 => self.visit_application(&non_terminal.rule.components),
+        match non_terminal.rule.id {
+            RuleIDs::Expr(rule) => match rule {
+                ExprRules::Rule0
+                | ExprRules::Rule1
+                | ExprRules::Rule2
+                | ExprRules::Rule3
+                | ExprRules::Rule4
+                | ExprRules::Rule5
+                | ExprRules::Rule6
+                | ExprRules::Rule7
+                | ExprRules::Rule8
+                | ExprRules::Rule9 => self.visit_expr(&non_terminal.rule.components[0]),
+                ExprRules::Rule10 | ExprRules::Rule11 => {
+                    self.visit_construction_expr(&non_terminal.rule.components)
+                }
+                ExprRules::Rule12 => self.visit_if_then_else_expr(&non_terminal.rule.components),
+            },
+            RuleIDs::Parenthesize(_) => self.visit_expr(&non_terminal.rule.components[1]),
+            RuleIDs::Tuple(_) => self.visit_tuple_expr(&non_terminal.rule.components),
+            RuleIDs::AnonymousFun(_) => self.visit_anonymous_fun(&non_terminal.rule.components),
+            RuleIDs::LetIn(_) => self.visit_let_in_expr(&non_terminal.rule.components),
+            RuleIDs::PatternMatch(_) => {
+                self.visit_pattern_match_expr(&non_terminal.rule.components)
+            }
+            RuleIDs::Application(ApplicationRules::Rule0) => {
+                self.visit_append_application(&non_terminal.rule.components)
+            }
+            RuleIDs::Application(_) => self.visit_application(&non_terminal.rule.components),
+            RuleIDs::BinOp(_) => self.visit_binop_expr(&non_terminal.rule.components),
+            RuleIDs::Arg(ArgRules::Rule4) => {
+                self.visit_construction_expr(&non_terminal.rule.components)
+            }
+            RuleIDs::Arg(_) => self.visit_expr(&non_terminal.rule.components[0]),
+            RuleIDs::Literal(_) => self.visit_expr(&non_terminal.rule.components[0]),
             _ => unreachable!(),
         }
     }
@@ -325,41 +359,39 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_constructors(&self, symbol: &Symbol) -> Vec<Constructor> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            24 => {
+        match ConstructorListRules::try_from(&rule.id).unwrap() {
+            ConstructorListRules::Rule0 => {
                 let mut constructors = self.visit_constructors(&rule.components[0]);
                 constructors.push(self.visit_constructor(&rule.components[2]));
                 constructors
             }
-            25 => vec![self.visit_constructor(&rule.components[0])],
-            _ => unreachable!(),
+            ConstructorListRules::Rule1 => vec![self.visit_constructor(&rule.components[0])],
         }
     }
 
     fn visit_constructor(&self, symbol: &Symbol) -> Constructor {
         let rule = extract_rule(symbol);
-        match rule.number {
-            26 => {
+        match ConstructorRules::try_from(&rule.id).unwrap() {
+            ConstructorRules::Rule0 => {
                 let name = self.lexer.str_from_span(extract_span(&rule.components[0]));
                 Constructor::new(name.to_string(), None)
             }
-            27 => {
+            ConstructorRules::Rule1 => {
                 let name = self.lexer.str_from_span(extract_span(&rule.components[0]));
                 let typ = self.visit_type_string(&rule.components[2]);
                 Constructor::new(name.to_string(), Some(typ))
             }
-            _ => unreachable!(),
         }
     }
 
     fn visit_type_string(&self, symbol: &Symbol) -> Rc<RefCell<Type>> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            28 => {
+        match TypeStringRules::try_from(&rule.id).unwrap() {
+            TypeStringRules::Rule0 => {
                 let typs = self.visit_type_strings(&rule.components[1]);
                 Rc::new(RefCell::new(Type::Tuple(typs)))
             }
-            29 => {
+            TypeStringRules::Rule1 => {
                 let id = self.lexer.str_from_span(extract_span(&rule.components[0]));
                 match id {
                     "int" => Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))),
@@ -367,50 +399,47 @@ impl<'a> AstBuilder<'a> {
                     _ => Rc::new(RefCell::new(Type::Custom(id.to_string(), vec![]))),
                 }
             }
-            30 => {
+            TypeStringRules::Rule2 => {
                 let arg = self.visit_type_string(&rule.components[0]);
                 let id = self.lexer.str_from_span(extract_span(&rule.components[1]));
                 Rc::new(RefCell::new(Type::Custom(id.to_string(), vec![arg])))
             }
-            31 => {
+            TypeStringRules::Rule3 => {
                 let args = self.visit_type_args(&rule.components[1]);
                 let id = self.lexer.str_from_span(extract_span(&rule.components[3]));
                 Rc::new(RefCell::new(Type::Custom(id.to_string(), args)))
             }
-            32 => {
+            TypeStringRules::Rule4 => {
                 let id = self.type_variable_id(&rule.components[0]);
                 Rc::new(RefCell::new(Type::Variable(Variable::Unbound(id))))
             }
-            _ => unreachable!(),
         }
     }
 
     fn visit_type_strings(&self, symbol: &Symbol) -> Vec<Rc<RefCell<Type>>> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            33 => {
+        match TypeStringListRules::try_from(&rule.id).unwrap() {
+            TypeStringListRules::Rule0 => {
                 let mut typs = self.visit_type_strings(&rule.components[0]);
                 typs.push(self.visit_type_string(&rule.components[2]));
                 typs
             }
-            34 => vec![
+            TypeStringListRules::Rule1 => vec![
                 self.visit_type_string(&rule.components[0]),
                 self.visit_type_string(&rule.components[2]),
             ],
-            _ => unreachable!(),
         }
     }
 
     fn visit_type_args(&self, symbol: &Symbol) -> Vec<Rc<RefCell<Type>>> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            35 => {
+        match TypeArgListRules::try_from(&rule.id).unwrap() {
+            TypeArgListRules::Rule0 => {
                 let mut args = self.visit_type_args(&rule.components[0]);
                 args.push(self.visit_type_string(&rule.components[2]));
                 args
             }
-            36 => vec![self.visit_type_string(&rule.components[0])],
-            _ => unreachable!(),
+            TypeArgListRules::Rule1 => vec![self.visit_type_string(&rule.components[0])],
         }
     }
 
@@ -420,58 +449,54 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_params(&self, symbol: &Symbol) -> Vec<Span> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            19 => {
+        match ParamListRules::try_from(&rule.id).unwrap() {
+            ParamListRules::Rule0 => {
                 let mut param_list = self.visit_params(&rule.components[0]);
                 let param = self.visit_param(&rule.components[1]);
                 param_list.push(param);
                 param_list
             }
-            20 => vec![self.visit_param(&rule.components[0])],
-            _ => unreachable!(),
+            ParamListRules::Rule1 => vec![self.visit_param(&rule.components[0])],
         }
     }
 
     fn visit_expr_list(&mut self, symbol: &Symbol) -> Vec<Rc<RefCell<Expr>>> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            51 => {
+        match ExprListRules::try_from(&rule.id).unwrap() {
+            ExprListRules::Rule0 => {
                 let mut expr_list = self.visit_expr_list(&rule.components[0]);
                 let expr = self.visit_expr(&rule.components[2]);
                 expr_list.push(expr);
                 expr_list
             }
-            52 => {
+            ExprListRules::Rule1 => {
                 vec![
                     self.visit_expr(&rule.components[0]),
                     self.visit_expr(&rule.components[2]),
                 ]
             }
-            _ => unreachable!(),
         }
     }
 
     fn visit_branches(&mut self, symbol: &Symbol) -> Vec<(Pattern, Rc<RefCell<Expr>>)> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            59 => {
+        match BranchesRules::try_from(&rule.id).unwrap() {
+            BranchesRules::Rule0 => {
                 let mut branches = self.visit_branches(&rule.components[0]);
                 let branch = self.visit_branch(&rule.components[2]);
                 branches.push(branch);
                 branches
             }
-            60 => vec![self.visit_branch(&rule.components[0])],
-            _ => unreachable!(),
+            BranchesRules::Rule1 => vec![self.visit_branch(&rule.components[0])],
         }
     }
 
     fn visit_branch(&mut self, symbol: &Symbol) -> (Pattern, Rc<RefCell<Expr>>) {
         self.push_local_bindings();
         let rule = extract_rule(symbol);
-        let pattern = match rule.number {
-            61 => self.visit_pattern(&rule.components[0]),
-            62 => Pattern::Tuple(self.visit_patterns(&rule.components[0])),
-            _ => unreachable!(),
+        let pattern = match BranchRules::try_from(&rule.id).unwrap() {
+            BranchRules::Rule0 => self.visit_pattern(&rule.components[0]),
+            BranchRules::Rule1 => Pattern::Tuple(self.visit_patterns(&rule.components[0])),
         };
         let expr = self.visit_expr(&rule.components[2]);
         self.pop_local_bindings();
@@ -480,46 +505,44 @@ impl<'a> AstBuilder<'a> {
 
     fn visit_pattern(&mut self, symbol: &Symbol) -> Pattern {
         let rule = extract_rule(symbol);
-        match rule.number {
-            63 => {
+        match PatternRules::try_from(&rule.id).unwrap() {
+            PatternRules::Rule0 => {
                 let patterns = self.visit_patterns(&rule.components[1]);
                 Pattern::Tuple(patterns)
             }
-            64 => {
+            PatternRules::Rule1 => {
                 let span = extract_span(&rule.components[0]).clone();
                 let arg = self.visit_pattern(&rule.components[1]);
                 Pattern::Constructor(span, Some(Box::new(arg)))
             }
-            65 => {
+            PatternRules::Rule2 => {
                 let span = extract_span(&rule.components[0]).clone();
                 Pattern::Constructor(span, None)
             }
-            66 => self.visit_singular_pattern(&rule.components[0]),
-            _ => unreachable!(),
+            PatternRules::Rule3 => self.visit_singular_pattern(&rule.components[0]),
         }
     }
 
     fn visit_patterns(&mut self, symbol: &Symbol) -> Vec<Pattern> {
         let rule = extract_rule(symbol);
-        match rule.number {
-            67 => {
+        match PatternsRules::try_from(&rule.id).unwrap() {
+            PatternsRules::Rule0 => {
                 let mut patterns = self.visit_patterns(&rule.components[0]);
                 let pattern = self.visit_pattern(&rule.components[2]);
                 patterns.push(pattern);
                 patterns
             }
-            68 => vec![
+            PatternsRules::Rule1 => vec![
                 self.visit_pattern(&rule.components[0]),
                 self.visit_pattern(&rule.components[2]),
             ],
-            _ => unreachable!(),
         }
     }
 
     fn visit_singular_pattern(&mut self, symbol: &Symbol) -> Pattern {
         let rule = extract_rule(symbol);
-        match rule.number {
-            69 => {
+        match SingularPatternRules::try_from(&rule.id).unwrap() {
+            SingularPatternRules::Rule0 => {
                 let span = extract_span(&rule.components[0]);
                 self.insert_name_to_local_bindings(span);
                 match self.lexer.str_from_span(span) {
@@ -527,12 +550,11 @@ impl<'a> AstBuilder<'a> {
                     _ => Pattern::Identifier(span.clone()),
                 }
             }
-            70 => {
+            SingularPatternRules::Rule1 => {
                 let literal = &rule.components[0];
                 let terminal = &extract_components(literal)[0];
                 Pattern::Literal(self.visit_literal_expr(extract_terminal(terminal)))
             }
-            _ => unreachable!(),
         }
     }
 
