@@ -511,7 +511,14 @@ impl<'a> IRBuilder<'a> {
         let lhs = self.visit_expr(&bin_op_expr.lhs.borrow());
         let rhs = self.visit_expr(&bin_op_expr.rhs.borrow());
         match bin_op_expr.op {
-            Operator::Plus | Operator::Minus | Operator::Star | Operator::Slash => {
+            Operator::Plus
+            | Operator::Minus
+            | Operator::Star
+            | Operator::Slash
+            | Operator::PointPlus
+            | Operator::PointMinus
+            | Operator::PointStar
+            | Operator::PointSlash => {
                 let typ = self.get_ir_typ(expr_ptr);
                 self.curr_fun().binop(typ, lhs, rhs, bin_op_expr.op)
             }
@@ -533,6 +540,7 @@ impl<'a> IRBuilder<'a> {
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {
         match literal_expr {
             LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I64(*value)),
+            LiteralExpr::Float(value, _) => IRValue::Pri(IRPri::Double(*value)),
             LiteralExpr::Unit(_) => IRValue::Pri(IRPri::I1(false)),
         }
     }
@@ -546,6 +554,7 @@ impl<'a> IRBuilder<'a> {
     ) -> IRValue {
         match operand_typ {
             Type::Primitive(Primitive::Integer)
+            | Type::Primitive(Primitive::Float)
             | Type::Primitive(Primitive::Bool)
             | Type::Primitive(Primitive::Unit) => {
                 return self.curr_fun().binop(IRType::I1, lhs, rhs, operator);
@@ -914,14 +923,39 @@ impl<'a> IRBuilder<'a> {
 
     fn populate_builtins(mut self) -> Self {
         let init = IRValue::Pri(IRPri::Str("%lld"));
-        let fmt_str_name = self.module.new_global_constant("oonta.fmt_str", init);
-        let fmt_str_ptr = IRValue::Global(fmt_str_name, IRType::Ptr);
-        self.insert_print_int_builtin(fmt_str_ptr.clone())
-            .insert_read_int_builtin(fmt_str_ptr)
+        let int_fmt_str_name = self.module.new_global_constant("oonta.int_fmt_str", init);
+        let int_fmt_str_ptr = IRValue::Global(int_fmt_str_name, IRType::Ptr);
+
+        let init = IRValue::Pri(IRPri::Str("%f"));
+        let float_fmt_str_name = self.module.new_global_constant("oonta.float_fmt_str", init);
+        let float_fmt_str_ptr = IRValue::Global(float_fmt_str_name, IRType::Ptr);
+
+        let printf_fun_ptr = self.insert_printf_declaration();
+        let scanf_fun_ptr = self.insert_scanf_declaration();
+
+        self.insert_print_builtin(
+            int_fmt_str_ptr.clone(),
+            printf_fun_ptr.clone(),
+            Type::Primitive(Primitive::Integer),
+        )
+        .insert_read_builtin(
+            int_fmt_str_ptr,
+            scanf_fun_ptr.clone(),
+            Type::Primitive(Primitive::Integer),
+        )
+        .insert_print_builtin(
+            float_fmt_str_ptr.clone(),
+            printf_fun_ptr,
+            Type::Primitive(Primitive::Float),
+        )
+        .insert_read_builtin(
+            float_fmt_str_ptr,
+            scanf_fun_ptr,
+            Type::Primitive(Primitive::Float),
+        )
     }
 
-    fn insert_print_int_builtin(mut self, fmt_str_ptr: IRValue) -> Self {
-        // 1. Insert printf declaration
+    fn insert_printf_declaration(&mut self) -> IRValue {
         let printf = "printf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
@@ -929,35 +963,10 @@ impl<'a> IRBuilder<'a> {
             .varargs()
             .ccc();
         self.module.new_function_decl(signature);
-
-        // 2. Define print_int function
-        let ret_typ = IRType::Void;
-        let params = vec![("p".to_string(), IRType::I64)];
-        let mut fun = Function::new("oonta.print_int.fun".to_string(), ret_typ, params);
-        let printf_fun_ptr = IRValue::Global(printf, IRType::Ptr);
-        let printf_args = vec![fmt_str_ptr, fun.param(0)];
-        fun.normal_call(printf_fun_ptr, IRType::I32, printf_args);
-        fun.ret(IRValue::Void);
-        let fun_name = self.module.new_function(fun);
-
-        // 3. Insert closure
-        let init = IRValue::Global(fun_name, IRType::Ptr);
-        let closure_name = self
-            .module
-            .new_global_constant("oonta.print_int.closure", init);
-
-        // 4. Insert global var
-        let init = IRValue::Global(closure_name, IRType::Ptr);
-        let print_int = "print_int".to_string();
-        let glb_name = Self::glb_name(&print_int);
-        let glb_name = self.module.new_global_constant(&glb_name, init);
-        self.insert_name_to_ctx(print_int, IRValue::Global(glb_name, IRType::Ptr));
-
-        self
+        IRValue::Global(printf, IRType::Ptr)
     }
 
-    fn insert_read_int_builtin(mut self, fmt_str_ptr: IRValue) -> Self {
-        // 1. Insert scanf declaration
+    fn insert_scanf_declaration(&mut self) -> IRValue {
         let scanf = "scanf".to_string();
         let ret_typ = IRType::I32;
         let params = vec![IRType::Ptr];
@@ -965,31 +974,69 @@ impl<'a> IRBuilder<'a> {
             .varargs()
             .ccc();
         self.module.new_function_decl(signature);
+        IRValue::Global(scanf, IRType::Ptr)
+    }
 
-        // 2. Define read_int function
-        let ret_typ = IRType::I64;
-        let params = vec![];
-        let mut fun = Function::new("oonta.read_int.fun".to_string(), ret_typ, params);
-        let scanf_fun_ptr = IRValue::Global(scanf, IRType::Ptr);
-        let res_ptr = fun.alloca(IRType::I64);
-        let scanf_args = vec![fmt_str_ptr, res_ptr.clone()];
-        fun.normal_call(scanf_fun_ptr, IRType::I32, scanf_args);
-        let res = fun.load(IRType::I64, res_ptr);
-        fun.ret(res);
+    fn insert_print_builtin(
+        mut self,
+        fmt_str_ptr: IRValue,
+        printf_fun_ptr: IRValue,
+        typ: Type,
+    ) -> Self {
+        // 1. Define print function
+        let ret_typ = IRType::Void;
+        let params = vec![("p".to_string(), IRType::from(&typ))];
+        let mut fun = Function::new(format!("oonta.print_{typ}.fun"), ret_typ, params);
+        let printf_args = vec![fmt_str_ptr, fun.param(0)];
+        fun.normal_call(printf_fun_ptr, IRType::I32, printf_args);
+        fun.ret(IRValue::Void);
         let fun_name = self.module.new_function(fun);
 
-        // 3. Insert closure
+        // 2. Insert closure
         let init = IRValue::Global(fun_name, IRType::Ptr);
         let closure_name = self
             .module
-            .new_global_constant("oonta.read_int.closure", init);
+            .new_global_constant(&format!("oonta.print_{typ}.closure"), init);
 
-        // 4. Insert global var
+        // 3. Insert global var
         let init = IRValue::Global(closure_name, IRType::Ptr);
-        let read_int = "read_int".to_string();
-        let glb_name = Self::glb_name(&read_int);
+        let fun_name = format!("print_{typ}");
+        let glb_name = Self::glb_name(&fun_name);
         let glb_name = self.module.new_global_constant(&glb_name, init);
-        self.insert_name_to_ctx(read_int, IRValue::Global(glb_name, IRType::Ptr));
+        self.insert_name_to_ctx(fun_name, IRValue::Global(glb_name, IRType::Ptr));
+
+        self
+    }
+
+    fn insert_read_builtin(
+        mut self,
+        fmt_str_ptr: IRValue,
+        scanf_fun_ptr: IRValue,
+        typ: Type,
+    ) -> Self {
+        // 1. Define read function
+        let ret_typ = IRType::from(&typ);
+        let params = vec![];
+        let mut fun = Function::new(format!("oonta.read_{typ}.fun"), ret_typ.clone(), params);
+        let res_ptr = fun.alloca(ret_typ.clone());
+        let scanf_args = vec![fmt_str_ptr, res_ptr.clone()];
+        fun.normal_call(scanf_fun_ptr, IRType::I32, scanf_args);
+        let res = fun.load(ret_typ, res_ptr);
+        fun.ret(res);
+        let fun_name = self.module.new_function(fun);
+
+        // 2. Insert closure
+        let init = IRValue::Global(fun_name, IRType::Ptr);
+        let closure_name = self
+            .module
+            .new_global_constant(&format!("oonta.read_{typ}.closure"), init);
+
+        // 3. Insert global var
+        let init = IRValue::Global(closure_name, IRType::Ptr);
+        let fun_name = format!("read_{typ}");
+        let glb_name = Self::glb_name(&fun_name);
+        let glb_name = self.module.new_global_constant(&glb_name, init);
+        self.insert_name_to_ctx(fun_name, IRValue::Global(glb_name, IRType::Ptr));
 
         self
     }

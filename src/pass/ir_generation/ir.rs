@@ -67,6 +67,7 @@ pub enum IRType {
     I8,
     I32,
     I64,
+    Double,
     Ptr,
     Struct(Vec<IRType>),
     Array(Box<IRType>, usize),
@@ -79,6 +80,10 @@ pub enum InstrClass {
     Sub(IRType, IRValue, IRValue),
     Mul(IRType, IRValue, IRValue),
     Div(IRType, IRValue, IRValue),
+    FAdd(IRType, IRValue, IRValue),
+    FSub(IRType, IRValue, IRValue),
+    FMul(IRType, IRValue, IRValue),
+    FDiv(IRType, IRValue, IRValue),
     Eq(IRType, IRValue, IRValue),
     Neq(IRType, IRValue, IRValue),
     Lte(IRType, IRValue, IRValue),
@@ -109,6 +114,7 @@ pub enum IRPri {
     I1(bool),
     I32(i32),
     I64(i64),
+    Double(f64),
     Str(&'static str),
 }
 
@@ -198,6 +204,7 @@ impl std::fmt::Display for GlobalVar {
         } else {
             match typ {
                 IRType::I32 | IRType::I64 | IRType::I1 => "0",
+                IRType::Double => "0.0",
                 IRType::Ptr => "null",
                 _ => unreachable!(),
             }
@@ -410,6 +417,10 @@ impl Function {
             Operator::Minus => InstrClass::Sub(op_typ, lhs, rhs),
             Operator::Star => InstrClass::Mul(op_typ, lhs, rhs),
             Operator::Slash => InstrClass::Div(op_typ, lhs, rhs),
+            Operator::PointPlus => InstrClass::FAdd(op_typ, lhs, rhs),
+            Operator::PointMinus => InstrClass::FSub(op_typ, lhs, rhs),
+            Operator::PointStar => InstrClass::FMul(op_typ, lhs, rhs),
+            Operator::PointSlash => InstrClass::FDiv(op_typ, lhs, rhs),
             Operator::Eq => InstrClass::Eq(op_typ, lhs, rhs),
             Operator::Neq => InstrClass::Neq(op_typ, lhs, rhs),
             Operator::Lte => InstrClass::Lte(op_typ, lhs, rhs),
@@ -607,6 +618,36 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Div(irtype, lhs, rhs) => {
                 write!(fmt, "sdiv {irtype} {}, {}", lhs.name(), rhs.name())
             }
+            InstrClass::FAdd(irtype, lhs, rhs) => {
+                write!(fmt, "fadd {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::FSub(irtype, lhs, rhs) => {
+                write!(fmt, "fsub {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::FMul(irtype, lhs, rhs) => {
+                write!(fmt, "fmul {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::FDiv(irtype, lhs, rhs) => {
+                write!(fmt, "fdiv {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Eq(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp oeq {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Neq(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp one {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Lte(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp ole {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Lt(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp olt {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Gte(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp oge {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Gt(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp ogt {irtype} {}, {}", lhs.name(), rhs.name())
+            }
             InstrClass::Eq(irtype, lhs, rhs) => {
                 write!(fmt, "icmp eq {irtype} {}, {}", lhs.name(), rhs.name())
             }
@@ -667,6 +708,7 @@ impl IRValue {
             IRValue::Pri(IRPri::I1(_)) => IRType::I1,
             IRValue::Pri(IRPri::I32(_)) => IRType::I32,
             IRValue::Pri(IRPri::I64(_)) => IRType::I64,
+            IRValue::Pri(IRPri::Double(_)) => IRType::Double,
             IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
             IRValue::Reg(_, ir_type) => ir_type.clone(),
             IRValue::Global(_, ir_type) => ir_type.clone(),
@@ -693,6 +735,7 @@ impl IRValue {
             IRValue::Pri(IRPri::I1(false)) => "0".to_string(),
             IRValue::Pri(IRPri::I32(val)) => val.to_string(),
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
+            IRValue::Pri(IRPri::Double(val)) => val.to_string(),
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
             IRValue::Void => "void".to_string(),
         }
@@ -714,6 +757,10 @@ impl IRType {
     pub fn is_void(&self) -> bool {
         matches!(self, IRType::Void)
     }
+
+    pub fn is_double(&self) -> bool {
+        matches!(self, IRType::Double)
+    }
 }
 
 impl From<Rc<RefCell<Type>>> for IRType {
@@ -727,6 +774,7 @@ impl From<&Type> for IRType {
         match typ {
             Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
+            Type::Primitive(Primitive::Float) => IRType::Double,
             Type::Primitive(Primitive::Bool) | Type::Primitive(Primitive::Unit) => IRType::I1,
             Type::Variable(Variable::Unbound(_)) => {
                 unreachable!("Type should be monomorphized in IR building phase")
@@ -746,6 +794,7 @@ impl std::fmt::Display for IRType {
             IRType::I8 => write!(fmt, "i8"),
             IRType::I32 => write!(fmt, "i32"),
             IRType::I64 => write!(fmt, "i64"),
+            IRType::Double => write!(fmt, "double"),
             IRType::Ptr => write!(fmt, "ptr"),
             IRType::Array(typ, sz) => write!(fmt, "[{sz} x {typ}]"),
             IRType::Struct(typs) => {
@@ -763,6 +812,8 @@ impl std::fmt::Display for IRPri {
             IRPri::I1(val) => write!(fmt, "i1 {val}"),
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
+            IRPri::Double(val) if val.fract() == 0.0 => write!(fmt, "double {val}.0"),
+            IRPri::Double(val) => write!(fmt, "double {val}"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
         }
     }

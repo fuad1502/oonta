@@ -321,6 +321,10 @@ impl<'a> AstBuilder<'a> {
             TerminalClass::Minus => Operator::Minus,
             TerminalClass::Star => Operator::Star,
             TerminalClass::Slash => Operator::Slash,
+            TerminalClass::PointPlus => Operator::PointPlus,
+            TerminalClass::PointMinus => Operator::PointMinus,
+            TerminalClass::PointStar => Operator::PointStar,
+            TerminalClass::PointSlash => Operator::PointSlash,
             TerminalClass::Eq => Operator::Eq,
             TerminalClass::Lte => Operator::Lte,
             TerminalClass::Lt => Operator::Lt,
@@ -339,7 +343,7 @@ impl<'a> AstBuilder<'a> {
     fn visit_terminal_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {
         match terminal.class() {
             TerminalClass::Identifier => self.new_var_expr(terminal),
-            TerminalClass::Number | TerminalClass::Unit => {
+            TerminalClass::Number | TerminalClass::Float | TerminalClass::Unit => {
                 let literal_expr = self.visit_literal_expr(terminal);
                 let expr = Expr::Literal(literal_expr);
                 Rc::new(RefCell::new(expr))
@@ -353,6 +357,7 @@ impl<'a> AstBuilder<'a> {
         match terminal.class() {
             TerminalClass::Number => self.new_integer_expr(terminal),
             TerminalClass::Unit => self.new_unit_expr(terminal),
+            TerminalClass::Float => self.new_float_expr(terminal),
             _ => unreachable!(),
         }
     }
@@ -395,6 +400,7 @@ impl<'a> AstBuilder<'a> {
                 let id = self.lexer.str_from_span(extract_span(&rule.components[0]));
                 match id {
                     "int" => Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))),
+                    "float" => Rc::new(RefCell::new(Type::Primitive(Primitive::Float))),
                     "bool" => Rc::new(RefCell::new(Type::Primitive(Primitive::Bool))),
                     _ => Rc::new(RefCell::new(Type::Custom(id.to_string(), vec![]))),
                 }
@@ -611,6 +617,13 @@ impl<'a> AstBuilder<'a> {
         let span = terminal.span().clone();
         let value = lexeme.parse().unwrap();
         LiteralExpr::Integer(value, span)
+    }
+
+    fn new_float_expr(&self, terminal: &Terminal) -> LiteralExpr {
+        let lexeme = self.lexer.get_lexeme(terminal);
+        let span = terminal.span().clone();
+        let value = lexeme.parse().unwrap();
+        LiteralExpr::Float(value, span)
     }
 
     fn new_var_expr(&mut self, terminal: &Terminal) -> Rc<RefCell<Expr>> {

@@ -216,6 +216,7 @@ impl<'a> AstPrinter<'a> {
     fn literal_expr_to_string(&self, literal_expr: &LiteralExpr) -> String {
         match literal_expr {
             LiteralExpr::Integer(val, _) => val.to_string(),
+            LiteralExpr::Float(val, _) => val.to_string(),
             LiteralExpr::Unit(_) => "unit".to_string(),
         }
     }

@@ -35,3 +35,15 @@ let () = print_bool (a >= a)
 let () = print_bool (a < a)
 let () = print_bool (a <= a)
 let () = print_bool (a = a)
+
+let c = 1.0
+let d = 2.0
+let () = print_bool (c > d)
+let () = print_bool (c >= d)
+let () = print_bool (c < d)
+let () = print_bool (c <= d)
+let () = print_bool (c > c)
+let () = print_bool (c >= c)
+let () = print_bool (c < c)
+let () = print_bool (c <= c)
+let () = print_bool (c = c)

@@ -10,3 +10,8 @@ let rec factorial x =
 
 let b = factorial 5
 let () = print_int b
+
+let pi = 3.14
+let area r = pi *. r *. r
+let c = area 2.0
+let () = print_float c

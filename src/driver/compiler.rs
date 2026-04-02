@@ -279,7 +279,7 @@ mod test {
 
     #[test]
     fn exec_arithmetic() {
-        exec("arithmetic", "9120");
+        exec("arithmetic", "912012.560000");
     }
 
     #[test]
@@ -339,7 +339,7 @@ mod test {
 
     #[test]
     fn exec_comparison() {
-        exec("comparison", "1100010111100110001011");
+        exec("comparison", "1100010111100110001011001101011");
     }
 
     #[test]

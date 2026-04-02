@@ -18,6 +18,10 @@ Plus("+")
 Minus("-")
 Star("\*")
 Slash("/")
+PointPlus("+.")
+PointMinus("-.")
+PointStar("\*.")
+PointSlash("/.")
 Lte("<=")
 Lt("<")
 Gte(">=")
@@ -26,6 +30,7 @@ LeftParen("\(")
 RightParen("\)")
 Comma(",")
 Number("\d\d*")
+Float("\d.\d\d*")
 Identifier("(\w|_)(\w|\W|\d|_)*")
 ConstructorIdentifier("\W(\w|\W|\d|_)*")
 TypeVariable("'\w")
@@ -101,6 +106,10 @@ BinOp =
     Expr Minus Expr |
     Expr Star Expr |
     Expr Slash Expr |
+    Expr PointPlus Expr |
+    Expr PointMinus Expr |
+    Expr PointStar Expr |
+    Expr PointSlash Expr |
     Expr Eq Expr |
     Expr Lte Expr |
     Expr Lt Expr |
@@ -110,7 +119,7 @@ BinOp =
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
 Arg = Identifier | Literal | Tuple | Parenthesize | ConstructorIdentifier;
 
-Literal = Number | Unit;
+Literal = Number | Float | Unit;
 
 %PRIORITIES
 BinOp(3)
