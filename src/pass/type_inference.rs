@@ -315,6 +315,9 @@ impl<'a> TypeInferer<'a> {
             LiteralExpr::Integer(_, _) => {
                 Ok(Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))))
             }
+            LiteralExpr::Float(_, _) => {
+                Ok(Rc::new(RefCell::new(Type::Primitive(Primitive::Float))))
+            }
             LiteralExpr::Unit(_) => Ok(Rc::new(RefCell::new(Type::Primitive(Primitive::Unit)))),
         }
     }
@@ -757,8 +760,15 @@ mod test {
     }
 
     #[test]
+    fn float_type() {
+        assert_type_of_last_bind("let x = 1.2", "float");
+        assert_type_of_last_bind("let x = 1.23", "float");
+    }
+
+    #[test]
     fn constructor_with_arg() {
         assert_type_of_last_bind("type t = Wrap of int | Empty let x = Wrap 1", "t");
+        assert_type_of_last_bind("type t = Wrap of float | Empty let x = Wrap 1.2", "t");
     }
 
     #[test]

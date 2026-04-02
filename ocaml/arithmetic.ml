@@ -10,3 +10,5 @@ let rec factorial x =
 
 let b = factorial 5
 let () = print_int b
+
+let pi = 3.14

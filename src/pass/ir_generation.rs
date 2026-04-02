@@ -533,6 +533,7 @@ impl<'a> IRBuilder<'a> {
     fn visit_literal_expr(&mut self, literal_expr: &LiteralExpr) -> IRValue {
         match literal_expr {
             LiteralExpr::Integer(value, _) => IRValue::Pri(IRPri::I64(*value)),
+            LiteralExpr::Float(value, _) => IRValue::Pri(IRPri::Double(*value)),
             LiteralExpr::Unit(_) => IRValue::Pri(IRPri::I1(false)),
         }
     }

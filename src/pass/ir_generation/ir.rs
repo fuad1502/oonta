@@ -67,6 +67,7 @@ pub enum IRType {
     I8,
     I32,
     I64,
+    Double,
     Ptr,
     Struct(Vec<IRType>),
     Array(Box<IRType>, usize),
@@ -109,6 +110,7 @@ pub enum IRPri {
     I1(bool),
     I32(i32),
     I64(i64),
+    Double(f64),
     Str(&'static str),
 }
 
@@ -198,6 +200,7 @@ impl std::fmt::Display for GlobalVar {
         } else {
             match typ {
                 IRType::I32 | IRType::I64 | IRType::I1 => "0",
+                IRType::Double => "0.0",
                 IRType::Ptr => "null",
                 _ => unreachable!(),
             }
@@ -667,6 +670,7 @@ impl IRValue {
             IRValue::Pri(IRPri::I1(_)) => IRType::I1,
             IRValue::Pri(IRPri::I32(_)) => IRType::I32,
             IRValue::Pri(IRPri::I64(_)) => IRType::I64,
+            IRValue::Pri(IRPri::Double(_)) => IRType::Double,
             IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
             IRValue::Reg(_, ir_type) => ir_type.clone(),
             IRValue::Global(_, ir_type) => ir_type.clone(),
@@ -693,6 +697,7 @@ impl IRValue {
             IRValue::Pri(IRPri::I1(false)) => "0".to_string(),
             IRValue::Pri(IRPri::I32(val)) => val.to_string(),
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
+            IRValue::Pri(IRPri::Double(val)) => val.to_string(),
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
             IRValue::Void => "void".to_string(),
         }
@@ -727,6 +732,7 @@ impl From<&Type> for IRType {
         match typ {
             Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::Ptr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
+            Type::Primitive(Primitive::Float) => IRType::Double,
             Type::Primitive(Primitive::Bool) | Type::Primitive(Primitive::Unit) => IRType::I1,
             Type::Variable(Variable::Unbound(_)) => {
                 unreachable!("Type should be monomorphized in IR building phase")
@@ -746,6 +752,7 @@ impl std::fmt::Display for IRType {
             IRType::I8 => write!(fmt, "i8"),
             IRType::I32 => write!(fmt, "i32"),
             IRType::I64 => write!(fmt, "i64"),
+            IRType::Double => write!(fmt, "double"),
             IRType::Ptr => write!(fmt, "ptr"),
             IRType::Array(typ, sz) => write!(fmt, "[{sz} x {typ}]"),
             IRType::Struct(typs) => {
@@ -763,6 +770,7 @@ impl std::fmt::Display for IRPri {
             IRPri::I1(val) => write!(fmt, "i1 {val}"),
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
+            IRPri::Double(val) => write!(fmt, "double {val}"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
         }
     }

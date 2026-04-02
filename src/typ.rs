@@ -16,6 +16,7 @@ pub enum Type {
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum Primitive {
     Integer,
+    Float,
     Bool,
     Unit,
 }
@@ -71,6 +72,7 @@ impl std::fmt::Display for Type {
             }
             Type::Primitive(primitive) => match primitive {
                 Primitive::Integer => write!(fmt, "int"),
+                Primitive::Float => write!(fmt, "float"),
                 Primitive::Bool => write!(fmt, "bool"),
                 Primitive::Unit => write!(fmt, "unit"),
             },

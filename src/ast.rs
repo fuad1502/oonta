@@ -39,6 +39,7 @@ pub enum Expr {
 #[derive(Clone)]
 pub enum LiteralExpr {
     Integer(i64, Span),
+    Float(f64, Span),
     Unit(Span),
 }
 
@@ -140,6 +141,7 @@ impl Expr {
     pub fn span(&self) -> &Span {
         match self {
             Expr::Literal(LiteralExpr::Integer(_, span)) => span,
+            Expr::Literal(LiteralExpr::Float(_, span)) => span,
             Expr::Literal(LiteralExpr::Unit(span)) => span,
             Expr::Var(VarExpr { id, .. }) => id,
             Expr::Fun(FunExpr { span, .. }) => span,

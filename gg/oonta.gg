@@ -26,6 +26,7 @@ LeftParen("\(")
 RightParen("\)")
 Comma(",")
 Number("\d\d*")
+Float("\d.\d\d*")
 Identifier("(\w|_)(\w|\W|\d|_)*")
 ConstructorIdentifier("\W(\w|\W|\d|_)*")
 TypeVariable("'\w")
@@ -110,7 +111,7 @@ BinOp =
 Application = Application Arg | Identifier Arg | Parenthesize Arg;
 Arg = Identifier | Literal | Tuple | Parenthesize | ConstructorIdentifier;
 
-Literal = Number | Unit;
+Literal = Number | Float | Unit;
 
 %PRIORITIES
 BinOp(3)
