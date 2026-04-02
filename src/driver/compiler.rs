@@ -279,7 +279,7 @@ mod test {
 
     #[test]
     fn exec_arithmetic() {
-        exec("arithmetic", "9120");
+        exec("arithmetic", "912012.560000");
     }
 
     #[test]

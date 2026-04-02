@@ -80,6 +80,10 @@ pub enum InstrClass {
     Sub(IRType, IRValue, IRValue),
     Mul(IRType, IRValue, IRValue),
     Div(IRType, IRValue, IRValue),
+    FAdd(IRType, IRValue, IRValue),
+    FSub(IRType, IRValue, IRValue),
+    FMul(IRType, IRValue, IRValue),
+    FDiv(IRType, IRValue, IRValue),
     Eq(IRType, IRValue, IRValue),
     Neq(IRType, IRValue, IRValue),
     Lte(IRType, IRValue, IRValue),
@@ -413,6 +417,10 @@ impl Function {
             Operator::Minus => InstrClass::Sub(op_typ, lhs, rhs),
             Operator::Star => InstrClass::Mul(op_typ, lhs, rhs),
             Operator::Slash => InstrClass::Div(op_typ, lhs, rhs),
+            Operator::PointPlus => InstrClass::FAdd(op_typ, lhs, rhs),
+            Operator::PointMinus => InstrClass::FSub(op_typ, lhs, rhs),
+            Operator::PointStar => InstrClass::FMul(op_typ, lhs, rhs),
+            Operator::PointSlash => InstrClass::FDiv(op_typ, lhs, rhs),
             Operator::Eq => InstrClass::Eq(op_typ, lhs, rhs),
             Operator::Neq => InstrClass::Neq(op_typ, lhs, rhs),
             Operator::Lte => InstrClass::Lte(op_typ, lhs, rhs),
@@ -610,6 +618,18 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Div(irtype, lhs, rhs) => {
                 write!(fmt, "sdiv {irtype} {}, {}", lhs.name(), rhs.name())
             }
+            InstrClass::FAdd(irtype, lhs, rhs) => {
+                write!(fmt, "fadd {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::FSub(irtype, lhs, rhs) => {
+                write!(fmt, "fsub {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::FMul(irtype, lhs, rhs) => {
+                write!(fmt, "fmul {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::FDiv(irtype, lhs, rhs) => {
+                write!(fmt, "fdiv {irtype} {}, {}", lhs.name(), rhs.name())
+            }
             InstrClass::Eq(irtype, lhs, rhs) => {
                 write!(fmt, "icmp eq {irtype} {}, {}", lhs.name(), rhs.name())
             }
@@ -770,6 +790,7 @@ impl std::fmt::Display for IRPri {
             IRPri::I1(val) => write!(fmt, "i1 {val}"),
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
+            IRPri::Double(val) if val.fract() == 0.0 => write!(fmt, "double {val}.0"),
             IRPri::Double(val) => write!(fmt, "double {val}"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
         }

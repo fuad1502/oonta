@@ -270,6 +270,17 @@ impl<'a> TypeInferer<'a> {
                 unify_typ(int_typ.clone(), typ)?;
                 Ok(int_typ)
             }
+            crate::ast::Operator::PointPlus
+            | crate::ast::Operator::PointMinus
+            | crate::ast::Operator::PointStar
+            | crate::ast::Operator::PointSlash => {
+                let int_typ = Rc::new(RefCell::new(Type::Primitive(Primitive::Float)));
+                let typ = self.infer_type(&bin_op_expr.lhs.borrow())?;
+                unify_typ(int_typ.clone(), typ)?;
+                let typ = self.infer_type(&bin_op_expr.rhs.borrow())?;
+                unify_typ(int_typ.clone(), typ)?;
+                Ok(int_typ)
+            }
             crate::ast::Operator::Eq
             | crate::ast::Operator::Neq
             | crate::ast::Operator::Lte
@@ -498,8 +509,24 @@ impl<'a> TypeInferer<'a> {
             .insert("print_int", Rc::new(RefCell::new(typ)));
 
         let typ = Type::Fun(vec![
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Float))),
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Unit))),
+        ]);
+        self.main_context
+            .borrow_mut()
+            .insert("print_float", Rc::new(RefCell::new(typ)));
+
+        let typ = Type::Fun(vec![
             Rc::new(RefCell::new(Type::Primitive(Primitive::Unit))),
             Rc::new(RefCell::new(Type::Primitive(Primitive::Integer))),
+        ]);
+        self.main_context
+            .borrow_mut()
+            .insert("read_int", Rc::new(RefCell::new(typ)));
+
+        let typ = Type::Fun(vec![
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Unit))),
+            Rc::new(RefCell::new(Type::Primitive(Primitive::Float))),
         ]);
         self.main_context
             .borrow_mut()

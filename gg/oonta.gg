@@ -18,6 +18,10 @@ Plus("+")
 Minus("-")
 Star("\*")
 Slash("/")
+PointPlus("+.")
+PointMinus("-.")
+PointStar("\*.")
+PointSlash("/.")
 Lte("<=")
 Lt("<")
 Gte(">=")
@@ -102,6 +106,10 @@ BinOp =
     Expr Minus Expr |
     Expr Star Expr |
     Expr Slash Expr |
+    Expr PointPlus Expr |
+    Expr PointMinus Expr |
+    Expr PointStar Expr |
+    Expr PointSlash Expr |
     Expr Eq Expr |
     Expr Lte Expr |
     Expr Lt Expr |
