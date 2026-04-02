@@ -554,6 +554,7 @@ impl<'a> IRBuilder<'a> {
     ) -> IRValue {
         match operand_typ {
             Type::Primitive(Primitive::Integer)
+            | Type::Primitive(Primitive::Float)
             | Type::Primitive(Primitive::Bool)
             | Type::Primitive(Primitive::Unit) => {
                 return self.curr_fun().binop(IRType::I1, lhs, rhs, operator);

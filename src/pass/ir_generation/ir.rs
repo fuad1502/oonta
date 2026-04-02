@@ -630,6 +630,24 @@ impl std::fmt::Display for InstrClass {
             InstrClass::FDiv(irtype, lhs, rhs) => {
                 write!(fmt, "fdiv {irtype} {}, {}", lhs.name(), rhs.name())
             }
+            InstrClass::Eq(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp oeq {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Neq(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp one {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Lte(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp ole {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Lt(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp olt {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Gte(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp oge {irtype} {}, {}", lhs.name(), rhs.name())
+            }
+            InstrClass::Gt(irtype, lhs, rhs) if irtype.is_double() => {
+                write!(fmt, "fcmp ogt {irtype} {}, {}", lhs.name(), rhs.name())
+            }
             InstrClass::Eq(irtype, lhs, rhs) => {
                 write!(fmt, "icmp eq {irtype} {}, {}", lhs.name(), rhs.name())
             }
@@ -738,6 +756,10 @@ impl std::fmt::Display for IRValue {
 impl IRType {
     pub fn is_void(&self) -> bool {
         matches!(self, IRType::Void)
+    }
+
+    pub fn is_double(&self) -> bool {
+        matches!(self, IRType::Double)
     }
 }
 
