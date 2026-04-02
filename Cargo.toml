@@ -1,6 +1,6 @@
 [package]
 name = "oonta"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "OCaml (subset) to LLVM IR compiler front-end"
 authors = ["Fuad Ismail <fuad1502@gmail.com>"]
