@@ -135,7 +135,7 @@ impl<'a> IRBuilder<'a> {
             .collect();
         let typ = self.get_typ(expr_ptr);
         let mut fun = Function::from_typ(fun_name.clone(), param_names.clone(), typ);
-        fun.add_param(("env".to_string(), IRType::Ptr));
+        fun.add_param(("env".to_string(), IRType::GcPtr));
 
         // > add function to module
         let fun_name = self.module.new_function(fun);
@@ -268,7 +268,7 @@ impl<'a> IRBuilder<'a> {
             dispath_param_names.clone(),
             Rc::new(RefCell::new(Type::Fun(dispatch_fun_typs))),
         );
-        dispatch_fun.add_param(("env".to_string(), IRType::Ptr));
+        dispatch_fun.add_param(("env".to_string(), IRType::GcPtr));
 
         // > add function to module
         let dispatch_fun_name = self.module.new_function(dispatch_fun);
@@ -323,7 +323,7 @@ impl<'a> IRBuilder<'a> {
         let ptr = self
             .curr_fun()
             .getelemptr(dispath_closure_typ.clone(), env.clone(), &[0, 1, 0]);
-        let closure = self.curr_fun().load(IRType::Ptr, ptr);
+        let closure = self.curr_fun().load(IRType::GcPtr, ptr);
 
         // > grab args
         let mut args: Vec<IRValue> = arg_typs
@@ -358,7 +358,7 @@ impl<'a> IRBuilder<'a> {
         let tag = self.custom_types.get_constructor_idx(cons_name);
         let tag = IRValue::Pri(IRPri::I64(tag as i64));
         let variant_ptr = self.malloc(8 * 2);
-        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
         let ptr = self
             .curr_fun()
             .getelemptr(variant_typ.clone(), variant_ptr.clone(), &[0, 0]);
@@ -680,7 +680,7 @@ impl<'a> IRBuilder<'a> {
         let exit_label = exit_bb.label().to_string();
         let true_bb = self.curr_fun().create_bb("true");
         let true_label = true_bb.label().to_string();
-        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+        let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
 
         // 1. Check if certainly false
         let ptr = self
@@ -829,7 +829,7 @@ impl<'a> IRBuilder<'a> {
                 let ctor_name = self.lexer.str_from_span(span);
                 let expected_tag = self.custom_types.get_constructor_idx(ctor_name);
                 let expected_tag = IRValue::Pri(IRPri::I64(expected_tag as i64));
-                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
                 let ptr = self
                     .curr_fun()
                     .getelemptr(variant_typ.clone(), value.clone(), &[0, 0]);
@@ -899,7 +899,7 @@ impl<'a> IRBuilder<'a> {
                 let typ = self.custom_types.get_constructor_arg(ctor_name).unwrap();
                 link_unbounds(typ.clone(), &variant_args);
                 let ir_typ = IRType::from(typ.clone());
-                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::Ptr]);
+                let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
                 let ptr = self.curr_fun().getelemptr(variant_typ, value, &[0, 1]);
                 let value = self.curr_fun().load(ir_typ, ptr);
                 self.gather_binds(pattern, typ, value)
@@ -1077,7 +1077,7 @@ impl<'a> IRBuilder<'a> {
         let ret_typ = match self.module.get_function_decl(&gcmalloc) {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
-                let ret_typ = IRType::Ptr;
+                let ret_typ = IRType::GcPtr;
                 let params = vec![IRType::I64];
                 let signature = FunSignature::new(gcmalloc.clone(), ret_typ.clone(), params)
                     .alloc()

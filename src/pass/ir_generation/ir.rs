@@ -68,6 +68,7 @@ pub enum IRType {
     I32,
     I64,
     Ptr,
+    GcPtr,
     Struct(Vec<IRType>),
     Array(Box<IRType>, usize),
 }
@@ -198,7 +199,7 @@ impl std::fmt::Display for GlobalVar {
         } else {
             match typ {
                 IRType::I32 | IRType::I64 | IRType::I1 => "0",
-                IRType::Ptr => "null",
+                IRType::Ptr | IRType::GcPtr => "null",
                 _ => unreachable!(),
             }
         };
@@ -290,8 +291,8 @@ impl Function {
             .collect();
         let res_name = self.new_name("r");
         let instr = Instr {
+            res: IRValue::Reg(res_name, src.typ()),
             class: InstrClass::GetElemPtr(typ, src, indexes),
-            res: IRValue::Reg(res_name, IRType::Ptr),
         };
         self.push_instr(instr.clone());
         instr.value()
@@ -594,7 +595,7 @@ impl std::fmt::Display for Instr {
 impl std::fmt::Display for InstrClass {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
-            InstrClass::Load(irtype, src) => write!(fmt, "load {irtype}, ptr {}", src.name()),
+            InstrClass::Load(irtype, src) => write!(fmt, "load {irtype}, {}", src),
             InstrClass::Add(irtype, lhs, rhs) => {
                 write!(fmt, "add {irtype} {}, {}", lhs.name(), rhs.name())
             }
@@ -628,7 +629,7 @@ impl std::fmt::Display for InstrClass {
             InstrClass::And(irtype, lhs, rhs) => {
                 write!(fmt, "and {irtype} {}, {}", lhs.name(), rhs.name())
             }
-            InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
+            InstrClass::Store(src, dst) => write!(fmt, "store {src}, {}", dst),
             InstrClass::Call(fun_ptr, ret_typ, args, fast) => {
                 // TODO: use other calling convention for fast call
                 let cc = if *fast { "ccc" } else { "" };
@@ -705,7 +706,7 @@ impl std::fmt::Display for IRValue {
             IRValue::Void => write!(fmt, "void"),
             IRValue::Pri(irpri) => write!(fmt, "{irpri}"),
             IRValue::Reg(name, irtype) => write!(fmt, "{irtype} %{name}"),
-            IRValue::Global(name, irtype) => write!(fmt, "{irtype} @{name}"),
+            IRValue::Global(name, _) => write!(fmt, "ptr @{name}"),
         }
     }
 }
@@ -725,7 +726,7 @@ impl From<Rc<RefCell<Type>>> for IRType {
 impl From<&Type> for IRType {
     fn from(typ: &Type) -> Self {
         match typ {
-            Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::Ptr,
+            Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::GcPtr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
             Type::Primitive(Primitive::Bool) | Type::Primitive(Primitive::Unit) => IRType::I1,
             Type::Variable(Variable::Unbound(_)) => {
@@ -747,6 +748,7 @@ impl std::fmt::Display for IRType {
             IRType::I32 => write!(fmt, "i32"),
             IRType::I64 => write!(fmt, "i64"),
             IRType::Ptr => write!(fmt, "ptr"),
+            IRType::GcPtr => write!(fmt, "ptr addrspace(1)"),
             IRType::Array(typ, sz) => write!(fmt, "[{sz} x {typ}]"),
             IRType::Struct(typs) => {
                 write!(fmt, "{{")?;
