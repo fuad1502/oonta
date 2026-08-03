@@ -23,29 +23,26 @@ pub struct GlobalVar {
     constant: bool,
 }
 
-// TODO: Refactor to include FunSignature struct
 pub struct Function {
-    name: String,
-    ret_typ: IRType,
-    params: Vec<Param>,
-    options: FunOptions,
+    signature: FunSignature,
     bbs: Vec<BasicBlock>,
     curr_bb: String,
     used_names: HashMap<String, usize>,
 }
 
-struct Param(String, IRType);
-
 pub struct FunSignature {
     name: String,
     ret_typ: IRType,
-    params: Vec<IRType>,
+    params: Vec<Param>,
     options: FunOptions,
 }
+
+pub struct Param(pub String, pub IRType);
 
 pub struct FunOptions {
     is_varargs: bool,
     allocator: bool,
+    enable_gc: bool,
     fastcc: bool,
 }
 
@@ -140,8 +137,8 @@ impl Module {
     }
 
     pub fn new_function(&mut self, mut function: Function) -> String {
-        let name = self.new_name(&function.name);
-        function.name = name.clone();
+        let name = self.new_name(&function.signature.name);
+        function.signature.name = name.clone();
         self.function_defs.insert(name.clone(), function);
         name
     }
@@ -209,24 +206,16 @@ impl std::fmt::Display for GlobalVar {
 }
 
 impl Function {
-    pub fn new(name: String, ret_typ: IRType, params: Vec<(String, IRType)>) -> Self {
+    pub fn new(name: String, ret_typ: IRType, params: Vec<Param>) -> Self {
         let mut fun = Self {
-            name,
-            ret_typ,
-            options: FunOptions::default(),
-            params: vec![],
+            signature: FunSignature::new(name, ret_typ, params),
             bbs: vec![],
             curr_bb: String::new(),
             used_names: HashMap::new(),
         };
         _ = fun.new_name("");
-        let params = params
-            .into_iter()
-            .map(|(n, t)| Param(fun.new_name(&n), t))
-            .collect();
         let entry_label = fun.new_name("entry");
         let entry_bb = BasicBlock::new(entry_label.clone());
-        fun.params = params;
         fun.bbs.push(entry_bb);
         fun.curr_bb = entry_label;
         fun
@@ -239,8 +228,8 @@ impl Function {
             let params = ir_typs
                 .into_iter()
                 .zip(param_names)
-                .map(|(ir_typ, name)| (name, ir_typ))
-                .collect::<Vec<(String, IRType)>>();
+                .map(|(ir_typ, name)| Param(name, ir_typ))
+                .collect::<Vec<Param>>();
             Function::new(name, ret_typ, params)
         } else {
             unreachable!()
@@ -269,19 +258,22 @@ impl Function {
 
     pub fn add_param(&mut self, param: (String, IRType)) {
         let name = self.new_name(&param.0);
-        self.params.push(Param(name, param.1));
+        self.signature.params.push(Param(name, param.1));
     }
 
     pub fn param(&self, idx: usize) -> IRValue {
-        IRValue::Reg(self.params[idx].0.clone(), self.params[idx].1.clone())
+        IRValue::Reg(
+            self.signature.params[idx].0.clone(),
+            self.signature.params[idx].1.clone(),
+        )
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        &self.signature.name
     }
 
     pub fn num_of_params(&self) -> usize {
-        self.params.len()
+        self.signature.params.len()
     }
 
     pub fn getelemptr(&mut self, typ: IRType, src: IRValue, indexes: &[i32]) -> IRValue {
@@ -460,14 +452,23 @@ impl Function {
 
 impl std::fmt::Display for Function {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
-        let ret_typ = &self.ret_typ;
-        let name = &self.name;
-        write!(fmt, "define {} {ret_typ} @{name}(", self.options.cc_str())?;
-        write_comma_separated(&self.params, fmt)?;
-        if self.options.is_varargs {
+        let ret_typ = &self.signature.ret_typ;
+        let name = &self.signature.name;
+        write!(
+            fmt,
+            "define {} {ret_typ} @{name}(",
+            self.signature.options.cc_str()
+        )?;
+        write_comma_separated(&self.signature.params, fmt)?;
+        if self.signature.options.is_varargs {
             write!(fmt, ", ...")?;
         }
-        writeln!(fmt, ") {} {{", self.options.fun_attr_str())?;
+        writeln!(
+            fmt,
+            ") {} {} {{",
+            self.signature.options.gc_strategy_str(),
+            self.signature.options.fun_attr_str()
+        )?;
         self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
         write!(fmt, "}}")
     }
@@ -482,11 +483,24 @@ impl std::fmt::Display for Param {
 }
 
 impl FunSignature {
-    pub fn new(name: String, ret_typ: IRType, params: Vec<IRType>) -> Self {
+    pub fn new(name: String, ret_typ: IRType, params: Vec<Param>) -> Self {
         Self {
             name,
             ret_typ,
             params,
+            options: FunOptions::default(),
+        }
+    }
+
+    pub fn no_param_names(name: String, ret_typ: IRType, param_typs: Vec<IRType>) -> Self {
+        Self {
+            name,
+            ret_typ,
+            params: param_typs
+                .into_iter()
+                .enumerate()
+                .map(|(i, t)| Param(format!("p{i}"), t))
+                .collect(),
             options: FunOptions::default(),
         }
     }
@@ -531,9 +545,17 @@ impl FunOptions {
         if self.fastcc { "ccc" } else { "" }
     }
 
-    fn fun_attr_str(&self) -> &'static str {
+    fn fun_attr_str(&self) -> &str {
         if self.allocator {
             "mustprogress nofree nounwind willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite)"
+        } else {
+            ""
+        }
+    }
+
+    fn gc_strategy_str(&self) -> &'static str {
+        if self.enable_gc {
+            "gc \"statepoint-example\""
         } else {
             ""
         }
@@ -545,6 +567,7 @@ impl Default for FunOptions {
         Self {
             is_varargs: false,
             allocator: false,
+            enable_gc: true,
             fastcc: true,
         }
     }

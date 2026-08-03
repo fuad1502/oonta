@@ -7,7 +7,9 @@ use crate::ast::{
     LiteralExpr, Operator, Pattern, PatternMatchExpr, TupleExpr, VarExpr,
 };
 use crate::lexer::Lexer;
-use crate::pass::ir_generation::ir::{FunSignature, Function, IRPri, IRType, IRValue, Module};
+use crate::pass::ir_generation::ir::{
+    FunSignature, Function, IRPri, IRType, IRValue, Module, Param,
+};
 use crate::pass::monomorphization::MonoBinds;
 use crate::pass::type_inference::TypeMap;
 use crate::typ::custom_types::CustomTypes;
@@ -561,8 +563,8 @@ impl<'a> IRBuilder<'a> {
 
         if self.module.get_function(&cmp_fun_name).is_none() {
             let operands = vec![
-                ("lhs".to_string(), IRType::from(&operand_typ)),
-                ("rhs".to_string(), IRType::from(&operand_typ)),
+                Param("lhs".to_string(), IRType::from(&operand_typ)),
+                Param("rhs".to_string(), IRType::from(&operand_typ)),
             ];
             let fun = Function::new(cmp_fun_name.clone(), IRType::I1, operands);
             let lhs = fun.param(0);
@@ -924,15 +926,15 @@ impl<'a> IRBuilder<'a> {
         // 1. Insert printf declaration
         let printf = "printf".to_string();
         let ret_typ = IRType::I32;
-        let params = vec![IRType::Ptr];
-        let signature = FunSignature::new(printf.clone(), ret_typ, params)
+        let param_typs = vec![IRType::Ptr];
+        let signature = FunSignature::no_param_names(printf.clone(), ret_typ, param_typs)
             .varargs()
             .ccc();
         self.module.new_function_decl(signature);
 
         // 2. Define print_int function
         let ret_typ = IRType::Void;
-        let params = vec![("p".to_string(), IRType::I64)];
+        let params = vec![Param("p".to_string(), IRType::I64)];
         let mut fun = Function::new("oonta.print_int.fun".to_string(), ret_typ, params);
         let printf_fun_ptr = IRValue::Global(printf, IRType::Ptr);
         let printf_args = vec![fmt_str_ptr, fun.param(0)];
@@ -960,8 +962,8 @@ impl<'a> IRBuilder<'a> {
         // 1. Insert scanf declaration
         let scanf = "scanf".to_string();
         let ret_typ = IRType::I32;
-        let params = vec![IRType::Ptr];
-        let signature = FunSignature::new(scanf.clone(), ret_typ, params)
+        let param_typs = vec![IRType::Ptr];
+        let signature = FunSignature::no_param_names(scanf.clone(), ret_typ, param_typs)
             .varargs()
             .ccc();
         self.module.new_function_decl(signature);
@@ -1078,10 +1080,11 @@ impl<'a> IRBuilder<'a> {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
                 let ret_typ = IRType::GcPtr;
-                let params = vec![IRType::I64];
-                let signature = FunSignature::new(gcmalloc.clone(), ret_typ.clone(), params)
-                    .alloc()
-                    .ccc();
+                let param_typs = vec![IRType::I64];
+                let signature =
+                    FunSignature::no_param_names(gcmalloc.clone(), ret_typ.clone(), param_typs)
+                        .alloc()
+                        .ccc();
                 self.module.new_function_decl(signature);
                 ret_typ
             }
