@@ -42,7 +42,7 @@ pub struct Param(pub String, pub IRType);
 pub struct FunOptions {
     is_varargs: bool,
     allocator: bool,
-    enable_gc: bool,
+    with_gc: bool,
     fastcc: bool,
 }
 
@@ -234,6 +234,16 @@ impl Function {
         } else {
             unreachable!()
         }
+    }
+
+    pub fn gcstrategy(mut self, value: bool) -> Self {
+        self.signature = self.signature.gcstrategy(value);
+        self
+    }
+
+    pub fn fastcc(mut self, value: bool) -> Self {
+        self.signature = self.signature.fastcc(value);
+        self
     }
 
     pub fn add_new_bb(&mut self, label: &str) -> String {
@@ -505,18 +515,23 @@ impl FunSignature {
         }
     }
 
-    pub fn varargs(mut self) -> Self {
-        self.options.is_varargs = true;
+    pub fn varargs(mut self, value: bool) -> Self {
+        self.options.is_varargs = value;
         self
     }
 
-    pub fn ccc(mut self) -> Self {
-        self.options.fastcc = false;
+    pub fn fastcc(mut self, value: bool) -> Self {
+        self.options.fastcc = value;
         self
     }
 
-    pub fn alloc(mut self) -> Self {
-        self.options.allocator = true;
+    pub fn gcstrategy(mut self, value: bool) -> Self {
+        self.options.with_gc = value;
+        self
+    }
+
+    pub fn allocator_attr(mut self, value: bool) -> Self {
+        self.options.allocator = value;
         self
     }
 
@@ -534,7 +549,12 @@ impl std::fmt::Display for FunSignature {
         if self.options.is_varargs {
             write!(fmt, ", ...")?;
         }
-        write!(fmt, ") {}", self.options.fun_attr_str())?;
+        write!(
+            fmt,
+            ") {} {}",
+            self.options.gc_strategy_str(),
+            self.options.fun_attr_str()
+        )?;
         Ok(())
     }
 }
@@ -554,7 +574,7 @@ impl FunOptions {
     }
 
     fn gc_strategy_str(&self) -> &'static str {
-        if self.enable_gc {
+        if self.with_gc {
             "gc \"statepoint-example\""
         } else {
             ""
@@ -567,7 +587,7 @@ impl Default for FunOptions {
         Self {
             is_varargs: false,
             allocator: false,
-            enable_gc: true,
+            with_gc: true,
             fastcc: true,
         }
     }

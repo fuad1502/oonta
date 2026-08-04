@@ -59,7 +59,7 @@ impl<'a> IRBuilder<'a> {
             module,
             bind_name: None,
         };
-        builder.populate_builtins()
+        builder.populate_builtins().populate_gc_functions()
     }
 
     pub fn build(mut self, ast: &Ast, mono_inds: &MonoBinds) -> Module {
@@ -928,8 +928,9 @@ impl<'a> IRBuilder<'a> {
         let ret_typ = IRType::I32;
         let param_typs = vec![IRType::Ptr];
         let signature = FunSignature::no_param_names(printf.clone(), ret_typ, param_typs)
-            .varargs()
-            .ccc();
+            .varargs(true)
+            .fastcc(false)
+            .gcstrategy(false);
         self.module.new_function_decl(signature);
 
         // 2. Define print_int function
@@ -964,8 +965,9 @@ impl<'a> IRBuilder<'a> {
         let ret_typ = IRType::I32;
         let param_typs = vec![IRType::Ptr];
         let signature = FunSignature::no_param_names(scanf.clone(), ret_typ, param_typs)
-            .varargs()
-            .ccc();
+            .varargs(true)
+            .fastcc(false)
+            .gcstrategy(false);
         self.module.new_function_decl(signature);
 
         // 2. Define read_int function
@@ -992,6 +994,29 @@ impl<'a> IRBuilder<'a> {
         let glb_name = Self::glb_name(&read_int);
         let glb_name = self.module.new_global_constant(&glb_name, init);
         self.insert_name_to_ctx(read_int, IRValue::Global(glb_name, IRType::Ptr));
+
+        self
+    }
+
+    fn populate_gc_functions(mut self) -> Self {
+        let gcsafepoint_name = String::from("gcsafepoint");
+        let gcsafepoint_decl =
+            FunSignature::no_param_names(gcsafepoint_name.clone(), IRType::Void, vec![])
+                .fastcc(false)
+                .gcstrategy(false);
+        self.module.new_function_decl(gcsafepoint_decl);
+
+        let mut gc_safepoint_poll =
+            Function::new(String::from("gc.safepoint_poll"), IRType::Void, vec![])
+                .fastcc(false)
+                .gcstrategy(false);
+        gc_safepoint_poll.normal_call(
+            IRValue::Global(gcsafepoint_name, IRType::Ptr),
+            IRType::Void,
+            vec![],
+        );
+        gc_safepoint_poll.ret(IRValue::Void);
+        self.module.new_function(gc_safepoint_poll);
 
         self
     }
@@ -1083,8 +1108,9 @@ impl<'a> IRBuilder<'a> {
                 let param_typs = vec![IRType::I64];
                 let signature =
                     FunSignature::no_param_names(gcmalloc.clone(), ret_typ.clone(), param_typs)
-                        .alloc()
-                        .ccc();
+                        .allocator_attr(true)
+                        .fastcc(false)
+                        .gcstrategy(false);
                 self.module.new_function_decl(signature);
                 ret_typ
             }
