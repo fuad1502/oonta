@@ -4,3 +4,5 @@
 static Gc gc{};
 
 extern "C" void *gcmalloc(size_t size) { return gc.allocate(size); }
+
+extern "C" void gcsafepoint() { return; }
