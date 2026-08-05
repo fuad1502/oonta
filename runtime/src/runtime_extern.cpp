@@ -1,1 +1,1 @@
-void init() {}
+extern "C" void caml_init() { }
