@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -110,6 +110,12 @@ impl Compiler {
         write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
         self.dbg_end();
 
+        if self.debug_phases {
+            fs::copy(out_path, out_path.with_extension("noopt.ll")).map_err(|e| e.to_string())?;
+        }
+
+        run_gc_passes(out_path)?;
+
         if self.optimize_ir {
             self.dbg_start("Optimize LLVM IR");
             optimize_llvm_ir(out_path)?;
@@ -196,6 +202,37 @@ fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
     let file = File::create(path)?;
     let wr = BufWriter::new(file);
     module.serialize(Box::new(wr))
+}
+
+fn run_gc_passes(path: &Path) -> Result<(), String> {
+    place_safepoints(path)?;
+    rewrite_statepoints(path)
+}
+
+fn place_safepoints(path: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("opt");
+    cmd.args([
+        "--passes=place-safepoints",
+        "-S",
+        "-o",
+        path.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(())
+}
+
+fn rewrite_statepoints(path: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("opt");
+    cmd.args([
+        "--passes=rewrite-statepoints-for-gc",
+        "-S",
+        "-o",
+        path.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(())
 }
 
 fn optimize_llvm_ir(path: &Path) -> Result<(), String> {
