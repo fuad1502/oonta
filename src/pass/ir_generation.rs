@@ -51,7 +51,7 @@ impl<'a> IRBuilder<'a> {
         let main_function = Function::new(main_fun_name.clone(), IRType::Void, vec![]);
         let mut module = Module::default();
         let main_fun_name = module.new_function(main_function);
-        let builder = Self {
+        let mut builder = Self {
             type_map,
             custom_types,
             lexer,
@@ -59,6 +59,9 @@ impl<'a> IRBuilder<'a> {
             module,
             bind_name: None,
         };
+        if is_top_level {
+            builder.call_runtime_init();
+        }
         builder.populate_builtins().populate_gc_functions()
     }
 
@@ -912,6 +915,18 @@ impl<'a> IRBuilder<'a> {
             }
             Pattern::Constructor(_, None) | Pattern::Literal(_) | Pattern::None => vec![],
         }
+    }
+
+    fn call_runtime_init(&mut self) {
+        let runtime_init_name = String::from("caml_init");
+        let runtime_init_decl = FunSignature::new(runtime_init_name.clone(), IRType::Void, vec![]);
+        self.module.new_function_decl(runtime_init_decl);
+
+        self.curr_fun().normal_call(
+            IRValue::Global(runtime_init_name, IRType::Ptr),
+            IRType::Void,
+            vec![],
+        );
     }
 
     fn populate_builtins(mut self) -> Self {
