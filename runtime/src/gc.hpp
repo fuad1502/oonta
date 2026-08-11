@@ -2,6 +2,7 @@
 #define GC_H
 
 #include <cstddef>
+#include "libunwind.h"
 
 class Gc {
   private:
@@ -16,6 +17,7 @@ class Gc {
   public:
     Gc();
     void *allocate(std::size_t size);
+    void safepoint(unw_cursor_t *cursor);
 };
 
 #endif // GC_H

@@ -280,13 +280,14 @@ fn create_safepoints_lib(obj_file: &Path, temp_dir: &Path) -> Result<PathBuf, St
 }
 
 fn create_executable(path: &Path, safepoints_lib: &Path) -> Result<PathBuf, String> {
-    let mut cmd = Command::new("clang");
+    let mut cmd = Command::new("clang++");
     let executable = path.with_extension("out");
     cmd.args([
         "-o",
         executable.to_str().unwrap(),
         path.to_str().unwrap(),
         "-loonta_runtime",
+        "-l:libunwind.a",
         "-L",
         safepoints_lib.parent().unwrap().to_str().unwrap(),
         "-lsafepoints",
