@@ -10,6 +10,8 @@ readme = "README.md"
 keywords = ["compiler", "ocaml", "llvm"]
 
 [dependencies]
+llvm-stackmap-parser = { version="0.1.0", path="../llvm-stackmap-parser/" }
+tempfile = "3.27.0"
 
 [build-dependencies]
 jjik = { version="0.4.0" }
