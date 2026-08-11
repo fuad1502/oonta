@@ -4,6 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
+use llvm_stackmap_parser::safepoint_gen::gen_safepoints_source;
+use llvm_stackmap_parser::stackmap::StackMap;
+use llvm_stackmap_parser::{read_reloc_names, read_section_bytes};
+use tempfile::TempDir;
+
 use crate::ast::{Ast, Expr};
 use crate::lexer::Lexer;
 use crate::parser::Parser;
@@ -125,8 +130,12 @@ impl Compiler {
         if self.create_obj_file {
             self.dbg_start("LLVM backend");
             let obj_file = create_obj_file(out_path)?;
+
+            let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
+            let safepoints_lib = create_safepoints_lib(&obj_file, &temp_dir.path())?;
+
             if self.create_executable {
-                let _ = create_executable(&obj_file)?;
+                let _ = create_executable(&obj_file, &safepoints_lib)?;
             }
             self.dbg_end();
         }
@@ -263,7 +272,14 @@ fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
     Ok(obj_file)
 }
 
-fn create_executable(path: &Path) -> Result<PathBuf, String> {
+fn create_safepoints_lib(obj_file: &Path, temp_dir: &Path) -> Result<PathBuf, String> {
+    let bytes = read_section_bytes(obj_file, ".llvm_stackmaps");
+    let stack_map = StackMap::from(&bytes[..]);
+    let reloc_names = read_reloc_names(obj_file, ".rela.llvm_stackmaps");
+    gen_safepoints_source(&stack_map, &reloc_names, temp_dir)
+}
+
+fn create_executable(path: &Path, safepoints_lib: &Path) -> Result<PathBuf, String> {
     let mut cmd = Command::new("clang");
     let executable = path.with_extension("out");
     cmd.args([
@@ -271,6 +287,9 @@ fn create_executable(path: &Path) -> Result<PathBuf, String> {
         executable.to_str().unwrap(),
         path.to_str().unwrap(),
         "-loonta_runtime",
+        "-L",
+        safepoints_lib.parent().unwrap().to_str().unwrap(),
+        "-lsafepoints",
     ]);
     execute_command(cmd)?;
     Ok(executable)
