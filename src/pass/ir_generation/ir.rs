@@ -201,7 +201,13 @@ impl std::fmt::Display for GlobalVar {
             }
         };
         let global_or_const = if self.constant { "constant" } else { "global" };
-        write!(fmt, "@{name} = {global_or_const} {typ} {init}")
+        write!(fmt, "@{name} = {global_or_const} {typ} {init}")?;
+
+        if matches!(typ, IRType::GcPtr) {
+            write!(fmt, ", section \".gcroots\", align 8")
+        } else {
+            Ok(())
+        }
     }
 }
 
