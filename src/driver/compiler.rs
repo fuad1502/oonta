@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use llvm_stackmap_parser::safepoint_gen::gen_safepoints_source;
 use llvm_stackmap_parser::stackmap::StackMap;
-use llvm_stackmap_parser::{read_reloc_names, read_section_bytes};
+use llvm_stackmap_parser::{read_reloc_names, read_section_bytes, read_section_syms};
 use tempfile::TempDir;
 
 use crate::ast::{Ast, Expr};
@@ -276,7 +276,8 @@ fn create_safepoints_lib(obj_file: &Path, temp_dir: &Path) -> Result<PathBuf, St
     let bytes = read_section_bytes(obj_file, ".llvm_stackmaps");
     let stack_map = StackMap::from(&bytes[..]);
     let reloc_names = read_reloc_names(obj_file, ".rela.llvm_stackmaps");
-    gen_safepoints_source(&stack_map, &reloc_names, temp_dir)
+    let global_gcroot_names = read_section_syms(obj_file, ".gcroots");
+    gen_safepoints_source(&stack_map, &reloc_names, &global_gcroot_names, temp_dir)
 }
 
 fn create_executable(path: &Path, safepoints_lib: &Path) -> Result<PathBuf, String> {
