@@ -132,7 +132,7 @@ impl Compiler {
             let obj_file = create_obj_file(out_path)?;
 
             let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
-            let safepoints_lib = create_safepoints_lib(&obj_file, &temp_dir.path())?;
+            let safepoints_lib = create_safepoints_lib(&obj_file, temp_dir.path())?;
 
             if self.create_executable {
                 let _ = create_executable(&obj_file, &safepoints_lib)?;
