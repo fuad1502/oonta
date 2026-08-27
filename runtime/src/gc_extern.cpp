@@ -2,12 +2,12 @@
 #include <cstdio>
 #include <stdlib.h>
 
-#define UNW_LOCAL_ONLY
-#include "libunwind.h"
-
 static Gc gc{};
 
-extern "C" void *gcmalloc(size_t size) { return gc.allocate(size); }
+extern "C" void *gcmalloc(size_t size, size_t *pointer_field_offs,
+                          size_t pointer_field_offs_len) {
+    return gc.allocate(size, pointer_field_offs, pointer_field_offs_len);
+}
 
 extern "C" void gcsafepoint() {
     unw_cursor_t cursor;
