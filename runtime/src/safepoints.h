@@ -26,4 +26,8 @@ extern struct Safepoint safepoints[];
 
 extern int safepoints_len;
 
+extern void *global_gcroots[];
+
+extern int global_gcroots_len;
+
 #endif // __SAFEPOINTS_H
