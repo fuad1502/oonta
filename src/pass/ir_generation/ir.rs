@@ -637,7 +637,7 @@ impl std::fmt::Display for Instr {
         if let Some(name) = self.res.reg_name() {
             write!(fmt, "%{name} = ")?;
         }
-        write!(fmt, "{}", &self.class)
+        write!(fmt, "{}", self.class)
     }
 }
 
