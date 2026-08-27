@@ -7,7 +7,6 @@
 #include <sys/mman.h>
 #include <unordered_map>
 
-#include "libunwind.h"
 #include "safepoints.h"
 
 size_t Gc::INITIAL_HEAP_SIZE = 2048;
@@ -24,7 +23,8 @@ Gc::Gc() {
     }
 }
 
-void *Gc::allocate(size_t size) {
+void *Gc::allocate(size_t size, size_t *pointer_field_offs,
+                   size_t pointer_field_offs_len) {
     void *ptr;
     if ((heap_offset + size) >= heap_size) {
         allocate_new_heap(heap_size * 2);

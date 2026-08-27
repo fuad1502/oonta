@@ -108,6 +108,7 @@ pub enum IRPri {
     I32(i32),
     I64(i64),
     Str(&'static str),
+    Array(Vec<IRPri>),
 }
 
 impl Module {
@@ -714,10 +715,7 @@ impl IRValue {
     pub fn typ(&self) -> IRType {
         match self {
             IRValue::Void => IRType::Void,
-            IRValue::Pri(IRPri::I1(_)) => IRType::I1,
-            IRValue::Pri(IRPri::I32(_)) => IRType::I32,
-            IRValue::Pri(IRPri::I64(_)) => IRType::I64,
-            IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
+            IRValue::Pri(primitive) => primitive.typ(),
             IRValue::Reg(_, ir_type) => ir_type.clone(),
             IRValue::Global(_, ir_type) => ir_type.clone(),
         }
@@ -745,6 +743,16 @@ impl IRValue {
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
             IRValue::Void => "void".to_string(),
+            IRValue::Pri(IRPri::Array(primitives)) => {
+                format!(
+                    "[{}]",
+                    primitives
+                        .iter()
+                        .map(|pri| pri.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
         }
     }
 }
@@ -763,6 +771,10 @@ impl std::fmt::Display for IRValue {
 impl IRType {
     pub fn is_void(&self) -> bool {
         matches!(self, IRType::Void)
+    }
+
+    pub fn is_gcptr(&self) -> bool {
+        matches!(self, IRType::GcPtr)
     }
 }
 
@@ -808,6 +820,20 @@ impl std::fmt::Display for IRType {
     }
 }
 
+impl IRPri {
+    pub fn typ(&self) -> IRType {
+        match self {
+            IRPri::I1(_) => IRType::I1,
+            IRPri::I32(_) => IRType::I32,
+            IRPri::I64(_) => IRType::I64,
+            IRPri::Array(primitives) => {
+                IRType::Array(Box::new(primitives[0].typ()), primitives.len())
+            }
+            IRPri::Str(str) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
+        }
+    }
+}
+
 impl std::fmt::Display for IRPri {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
@@ -815,7 +841,28 @@ impl std::fmt::Display for IRPri {
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
+            IRPri::Array(primitives) => {
+                write!(fmt, "[{} x {}] [", primitives[0].typ(), primitives.len())?;
+                write_comma_separated(primitives, fmt)?;
+                write!(fmt, "]")
+            }
         }
+    }
+}
+
+impl<T> From<Vec<T>> for IRPri
+where
+    IRPri: From<T>,
+{
+    fn from(value: Vec<T>) -> Self {
+        let primitives = value.into_iter().map(IRPri::from).collect();
+        Self::Array(primitives)
+    }
+}
+
+impl From<usize> for IRPri {
+    fn from(value: usize) -> Self {
+        IRPri::I64(value as i64)
     }
 }
 

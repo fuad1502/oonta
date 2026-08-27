@@ -1,8 +1,9 @@
 #ifndef GC_H
 #define GC_H
 
-#include <cstddef>
+#define UNW_LOCAL_ONLY
 #include "libunwind.h"
+#include <cstddef>
 
 class Gc {
   private:
@@ -16,7 +17,8 @@ class Gc {
 
   public:
     Gc();
-    void *allocate(std::size_t size);
+    void *allocate(size_t size, size_t *pointer_field_offs,
+                   size_t pointer_field_offs_len);
     void safepoint(unw_cursor_t *cursor);
 };
 

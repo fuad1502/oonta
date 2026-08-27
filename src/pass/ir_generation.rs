@@ -27,6 +27,7 @@ pub struct IRBuilder<'a> {
     context: Option<Context>,
     module: Module,
     bind_name: Option<String>,
+    pointer_field_off_vals: HashMap<Vec<usize>, IRValue>,
 }
 
 struct Context {
@@ -58,6 +59,7 @@ impl<'a> IRBuilder<'a> {
             context: Some(Context::new(main_fun_name, None)),
             module,
             bind_name: None,
+            pointer_field_off_vals: HashMap::new(),
         };
         if is_top_level {
             builder.call_runtime_init();
@@ -169,11 +171,11 @@ impl<'a> IRBuilder<'a> {
             let env_typ = IRType::Struct(env_typs.clone());
             IRType::Struct(vec![IRType::Ptr, env_typ])
         };
-        for (i, (name, typ)) in fun_expr.captures.iter().zip(env_typs).enumerate() {
+        for (i, (name, typ)) in fun_expr.captures.iter().zip(&env_typs).enumerate() {
             let ptr =
                 self.curr_fun()
                     .getelemptr(closure_typ.clone(), env_ptr.clone(), &[0, 1, i as i32]);
-            let val = self.curr_fun().load(typ, ptr);
+            let val = self.curr_fun().load(typ.clone(), ptr);
             self.insert_name_to_ctx(name.to_string(), val);
         }
 
@@ -188,7 +190,10 @@ impl<'a> IRBuilder<'a> {
 
         // 4. Create closure
         self.pop_ctx();
-        let closure_ptr = self.malloc(8 * (1 + fun_expr.captures.len()));
+        let closure_ptr = self.malloc(
+            8 * (1 + fun_expr.captures.len()),
+            &Self::pointer_offs_from_typs(&env_typs, 1),
+        );
 
         // > store anon function ptr
         let ptr = self
@@ -290,7 +295,10 @@ impl<'a> IRBuilder<'a> {
         env_typs.extend(arg_typs.clone());
         let dispath_closure_typ =
             IRType::Struct(vec![IRType::Ptr, IRType::Struct(env_typs.clone())]);
-        let dispath_closure_ptr = self.malloc(8 * (1 + env_typs.len()));
+        let dispath_closure_ptr = self.malloc(
+            8 * (1 + env_typs.len()),
+            &Self::pointer_offs_from_typs(&env_typs, 1),
+        );
 
         // > store anon function ptr
         let ptr = self.curr_fun().getelemptr(
@@ -362,7 +370,7 @@ impl<'a> IRBuilder<'a> {
         let cons_name = self.lexer.str_from_span(&construct_expr.cons);
         let tag = self.custom_types.get_constructor_idx(cons_name);
         let tag = IRValue::Pri(IRPri::I64(tag as i64));
-        let variant_ptr = self.malloc(8 * 2);
+        let variant_ptr = self.malloc(8 * 2, &[1usize]);
         let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
         let ptr = self
             .curr_fun()
@@ -379,13 +387,16 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_tuple_expr(&mut self, tuple_expr: &TupleExpr) -> IRValue {
-        let tuple_ptr = self.malloc(8 * tuple_expr.elements.len());
         let values: Vec<IRValue> = tuple_expr
             .elements
             .iter()
             .map(|expr| self.visit_expr(&expr.borrow()))
             .collect();
         let typs: Vec<IRType> = values.iter().map(|val| val.typ()).collect();
+        let tuple_ptr = self.malloc(
+            8 * tuple_expr.elements.len(),
+            &Self::pointer_offs_from_typs(&typs, 0),
+        );
         let tuple_typ = IRType::Struct(typs);
         values.into_iter().enumerate().for_each(|(i, val)| {
             let ptr =
@@ -1113,14 +1124,14 @@ impl<'a> IRBuilder<'a> {
         }
     }
 
-    fn malloc(&mut self, sz: usize) -> IRValue {
+    fn malloc(&mut self, sz: usize, pointer_field_offs: &[usize]) -> IRValue {
         let sz = IRValue::Pri(IRPri::I64(sz as i64));
         let gcmalloc = "gcmalloc".to_string();
         let ret_typ = match self.module.get_function_decl(&gcmalloc) {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
                 let ret_typ = IRType::GcPtr;
-                let param_typs = vec![IRType::I64];
+                let param_typs = vec![IRType::I64, IRType::Ptr, IRType::I64];
                 let signature =
                     FunSignature::no_param_names(gcmalloc.clone(), ret_typ.clone(), param_typs)
                         .allocator_attr(true)
@@ -1131,7 +1142,13 @@ impl<'a> IRBuilder<'a> {
             }
         };
         let fun_ptr = IRValue::Global(gcmalloc, IRType::Ptr);
-        self.curr_fun().normal_call(fun_ptr, ret_typ, vec![sz])
+        let pointer_field_offs_sz = IRValue::Pri(IRPri::I64(pointer_field_offs.len() as i64));
+        let pointer_field_offs_val = self.create_pointer_field_offs_val(pointer_field_offs);
+        self.curr_fun().normal_call(
+            fun_ptr,
+            ret_typ,
+            vec![sz, pointer_field_offs_val, pointer_field_offs_sz],
+        )
     }
 
     fn is_polymorphic(&self, bind: &Bind) -> bool {
@@ -1140,6 +1157,42 @@ impl<'a> IRBuilder<'a> {
             self.get_typ(expr_ptr)
         };
         is_polymorphic(typ)
+    }
+
+    fn create_pointer_field_offs_val(&mut self, pointer_field_offs: &[usize]) -> IRValue {
+        if pointer_field_offs.is_empty() {
+            return IRValue::Pri(IRPri::I64(0));
+        }
+
+        let pointer_field_offs = Vec::from(pointer_field_offs);
+        if let Some(val) = self.pointer_field_off_vals.get(&pointer_field_offs) {
+            return val.clone();
+        }
+
+        let pointer_field_offs_pri = IRPri::from(pointer_field_offs.clone());
+        let pointer_field_offs_typ = pointer_field_offs_pri.typ();
+        let pointer_field_offs_name = self
+            .module
+            .new_global_constant("oonta.ptr_field_offs", IRValue::Pri(pointer_field_offs_pri));
+        let pointer_field_offs_val =
+            IRValue::Global(pointer_field_offs_name, pointer_field_offs_typ);
+
+        self.pointer_field_off_vals
+            .insert(pointer_field_offs, pointer_field_offs_val.clone());
+        pointer_field_offs_val
+    }
+
+    fn pointer_offs_from_typs(typs: &[IRType], starting_offset: usize) -> Vec<usize> {
+        typs.iter()
+            .enumerate()
+            .filter_map(|(idx, typ)| {
+                if typ.is_gcptr() {
+                    Some(idx + starting_offset)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
