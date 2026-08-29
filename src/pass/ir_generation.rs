@@ -970,17 +970,22 @@ impl<'a> IRBuilder<'a> {
         let fun_name = self.module.new_function(fun);
 
         // 3. Insert closure
-        let init = IRValue::Global(fun_name, IRType::Ptr);
-        let closure_name = self
-            .module
-            .new_global_constant("oonta.print_int.closure", init);
+        let closure_ptr = self.malloc(8, &[]);
+        let ptr = self
+            .curr_fun()
+            .getelemptr(IRType::Ptr, closure_ptr.clone(), &[0]);
+        self.curr_fun()
+            .store(IRValue::Global(fun_name, IRType::Ptr), ptr);
 
         // 4. Insert global var
-        let init = IRValue::Global(closure_name, IRType::Ptr);
         let print_int = "print_int".to_string();
         let glb_name = Self::glb_name(&print_int);
-        let glb_name = self.module.new_global_constant(&glb_name, init);
-        self.insert_name_to_ctx(print_int, IRValue::Global(glb_name, IRType::Ptr));
+        let glb_name = self.module.new_global_var(&glb_name, IRType::GcPtr, None);
+        let glb_var = IRValue::Global(glb_name, IRType::GcPtr);
+        self.insert_name_to_ctx(print_int, glb_var.clone());
+
+        // 5. Store closure to global var
+        self.curr_fun().store(closure_ptr, glb_var);
 
         self
     }
@@ -1009,18 +1014,22 @@ impl<'a> IRBuilder<'a> {
         let fun_name = self.module.new_function(fun);
 
         // 3. Insert closure
-        let init = IRValue::Global(fun_name, IRType::Ptr);
-        let closure_name = self
-            .module
-            .new_global_constant("oonta.read_int.closure", init);
+        let closure_ptr = self.malloc(8, &[]);
+        let ptr = self
+            .curr_fun()
+            .getelemptr(IRType::Ptr, closure_ptr.clone(), &[0]);
+        self.curr_fun()
+            .store(IRValue::Global(fun_name, IRType::Ptr), ptr);
 
         // 4. Insert global var
-        let init = IRValue::Global(closure_name, IRType::Ptr);
         let read_int = "read_int".to_string();
         let glb_name = Self::glb_name(&read_int);
-        let glb_name = self.module.new_global_constant(&glb_name, init);
-        self.insert_name_to_ctx(read_int, IRValue::Global(glb_name, IRType::Ptr));
+        let glb_name = self.module.new_global_var(&glb_name, IRType::GcPtr, None);
+        let glb_var = IRValue::Global(glb_name, IRType::GcPtr);
+        self.insert_name_to_ctx(read_int, glb_var.clone());
 
+        // 5. Store closure to global var
+        self.curr_fun().store(closure_ptr, glb_var);
         self
     }
 
