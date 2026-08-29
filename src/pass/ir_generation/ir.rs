@@ -13,6 +13,7 @@ pub struct Module {
     global_constants: Vec<GlobalVar>,
     function_defs: BTreeMap<String, Function>,
     function_decls: BTreeMap<String, FunSignature>,
+    extern_variables: BTreeMap<String, IRType>,
     used_names: HashMap<String, usize>,
 }
 
@@ -149,6 +150,10 @@ impl Module {
             .insert(signature.name.clone(), signature);
     }
 
+    pub fn new_extern_variable(&mut self, name: String, typ: IRType) {
+        self.extern_variables.insert(name, typ);
+    }
+
     pub fn get_function(&mut self, name: &str) -> Option<&mut Function> {
         self.function_defs.get_mut(name)
     }
@@ -161,6 +166,10 @@ impl Module {
         self.function_decls
             .values()
             .try_for_each(|decl| writeln!(wr, "{decl}"))?;
+        writeln!(wr)?;
+        self.extern_variables
+            .iter()
+            .try_for_each(|(name, typ)| writeln!(wr, "@{name} = external global {typ}"))?;
         writeln!(wr)?;
         self.global_constants
             .iter()

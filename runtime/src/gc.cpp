@@ -37,6 +37,11 @@ void *Heap::allocate(size_t size, size_t *pointer_field_offs,
     return obj_ptr;
 }
 
+char Heap::usage_percentage() {
+    char usage = (100 * heap_offset) / heap_size;
+    return usage;
+}
+
 /*
  * Header format:
  *                      |xxxxxxx0|obj
@@ -93,6 +98,7 @@ Heap::header_size_from_pointer_field_offs(size_t *pointer_field_offs,
 
 size_t Gc::GEN0_HEAP_SIZE = 2 * 1024;
 size_t Gc::GEN1_INITIAL_HEAP_SIZE = 2 * 1024 * 1024;
+char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 80;
 
 Gc::Gc() {
     gen0_heap = new Heap(GEN0_HEAP_SIZE);
@@ -142,4 +148,8 @@ void Gc::safepoint(unw_cursor_t *cursor) {
             break;
         }
     }
+}
+
+bool Gc::need_collection() {
+    return gen0_heap->usage_percentage() > COLLECTION_THRESHOLD_PERCENTAGE;
 }
