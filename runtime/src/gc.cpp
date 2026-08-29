@@ -5,16 +5,98 @@
 #include <cstdlib>
 #include <cstring>
 #include <sys/mman.h>
-#include <unordered_map>
 
 #include "safepoints.h"
 
-size_t Gc::INITIAL_HEAP_SIZE = 2048;
+Heap::Heap(size_t size) {
+    heap_size = size;
+    heap_offset = 0;
+    heap = mmap(NULL, heap_size, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (heap == MAP_FAILED) {
+        printf("Failed to allocate new heap: %s\n", strerror(errno));
+        std::exit(-1);
+    }
+}
 
-std::unordered_map<unw_word_t, struct Safepoint *> *safepoints_map;
+void *Heap::allocate(size_t size, size_t *pointer_field_offs,
+                     size_t pointer_field_offs_len) {
+    auto header_size = header_size_from_pointer_field_offs(
+        pointer_field_offs, pointer_field_offs_len);
+    auto total_size = header_size + size;
+
+    if (heap_offset + total_size > heap_size) {
+        return nullptr;
+    }
+
+    auto *obj_ptr = (char *)heap + heap_offset + header_size;
+
+    write_header(obj_ptr, pointer_field_offs, pointer_field_offs_len);
+
+    heap_offset += total_size;
+    return obj_ptr;
+}
+
+/*
+ * Header format:
+ *                      |xxxxxxx0|obj
+ *             |xxxxxxxx|00000011|obj
+ *    |xxxxxxxx|xxxxxxxx|00000101|obj
+ * ...|xxxxxxxx|00000001|11111111|obj
+ *
+ * x: 0 -> not pointer, 1 -> pointer
+ */
+void Heap::write_header(void *obj_ptr, size_t *pointer_field_offs,
+                        size_t pointer_field_offs_len) {
+    auto header_size = header_size_from_pointer_field_offs(
+        pointer_field_offs, pointer_field_offs_len);
+
+    if (header_size == 1) {
+        int header = 0;
+        for (int i = 0; i < pointer_field_offs_len; i++) {
+            header |= (1 << (pointer_field_offs[i] + 1));
+        }
+        *((char *)obj_ptr - 1) = header;
+        return;
+    }
+
+    memset((char *)obj_ptr - header_size, 0, header_size);
+    *((char *)obj_ptr - 1) = 1 + ((header_size - 1) << 1);
+
+    // TODO: Handle writing header with pointer field offsets larger than 7
+    printf("pointer field offset larger than 7 is not yet handled\n");
+    exit(-1);
+}
+
+size_t
+Heap::header_size_from_pointer_field_offs(size_t *pointer_field_offs,
+                                          size_t pointer_field_offs_len) {
+    if (pointer_field_offs == 0)
+        return 1;
+
+    auto max_offset = pointer_field_offs[pointer_field_offs_len - 1];
+
+    if (max_offset < 7) {
+        return 1;
+    }
+
+    if (max_offset < (8 * 0x7f)) {
+        return 2 + max_offset / 8;
+    }
+
+    // TODO: Handle calculating header size with pointer field offsets larger
+    // than (8 * 0x7f)
+    printf("pointer field offset larger than %d is not yet handled\n",
+           (8 * 0x7f));
+    exit(-1);
+}
+
+size_t Gc::GEN0_HEAP_SIZE = 2 * 1024;
+size_t Gc::GEN1_INITIAL_HEAP_SIZE = 2 * 1024 * 1024;
 
 Gc::Gc() {
-    allocate_new_heap(INITIAL_HEAP_SIZE);
+    gen0_heap = new Heap(GEN0_HEAP_SIZE);
+    gen1_heap = new Heap(GEN1_INITIAL_HEAP_SIZE);
 
     // TODO: create safepoints_map at compile-time
     safepoints_map = new std::unordered_map<unw_word_t, struct Safepoint *>();
@@ -25,24 +107,15 @@ Gc::Gc() {
 
 void *Gc::allocate(size_t size, size_t *pointer_field_offs,
                    size_t pointer_field_offs_len) {
-    void *ptr;
-    if ((heap_offset + size) >= heap_size) {
-        allocate_new_heap(heap_size * 2);
-    }
-    ptr = (char *)heap + heap_offset;
-    heap_offset += size;
-    return ptr;
-}
+    auto *ptr =
+        gen0_heap->allocate(size, pointer_field_offs, pointer_field_offs_len);
 
-void Gc::allocate_new_heap(size_t size) {
-    heap_size = size;
-    heap_offset = 0;
-    heap = mmap(NULL, heap_size, PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (heap == MAP_FAILED) {
-        printf("Failed to allocate new heap: %s\n", strerror(errno));
-        std::exit(-1);
+    if (ptr == nullptr) {
+        printf("Cannot allocate to generation 0 heap\n");
+        exit(-1);
     }
+
+    return ptr;
 }
 
 void Gc::safepoint(unw_cursor_t *cursor) {
