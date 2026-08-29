@@ -64,7 +64,10 @@ impl<'a> IRBuilder<'a> {
         if is_top_level {
             builder.call_runtime_init();
         }
-        builder.populate_builtins().populate_gc_functions()
+        builder
+            .populate_builtins()
+            .populate_gc_functions()
+            .populate_gc_extern_variables()
     }
 
     pub fn build(mut self, ast: &Ast, mono_inds: &MonoBinds) -> Module {
@@ -1034,6 +1037,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn populate_gc_functions(mut self) -> Self {
+        // 1. Declare gcsafepoint function
         let gcsafepoint_name = String::from("gcsafepoint");
         let gcsafepoint_decl =
             FunSignature::no_param_names(gcsafepoint_name.clone(), IRType::Void, vec![])
@@ -1041,17 +1045,37 @@ impl<'a> IRBuilder<'a> {
                 .gcstrategy(false);
         self.module.new_function_decl(gcsafepoint_decl);
 
+        // 2. Define GC safepoint poll
         let mut gc_safepoint_poll =
             Function::new(String::from("gc.safepoint_poll"), IRType::Void, vec![])
                 .fastcc(false)
                 .gcstrategy(false);
+
+        // 3. Write GC safepoint poll code
+        let gc_need_collection = IRValue::Global(String::from("gcneedcollection"), IRType::I1);
+        let gc_need_collection = gc_safepoint_poll.load(IRType::I1, gc_need_collection);
+        let then_label = gc_safepoint_poll.add_new_bb("then");
+        let else_label = gc_safepoint_poll.add_new_bb("else");
+        gc_safepoint_poll.cond_brk(gc_need_collection, then_label.clone(), else_label.clone());
+        gc_safepoint_poll.set_bb(then_label);
         gc_safepoint_poll.normal_call(
             IRValue::Global(gcsafepoint_name, IRType::Ptr),
             IRType::Void,
             vec![],
         );
+        gc_safepoint_poll.brk(else_label.clone());
+        gc_safepoint_poll.set_bb(else_label);
         gc_safepoint_poll.ret(IRValue::Void);
+
+        // 4. Register GC safepoint poll function
         self.module.new_function(gc_safepoint_poll);
+
+        self
+    }
+
+    fn populate_gc_extern_variables(mut self) -> Self {
+        self.module
+            .new_extern_variable(String::from("gcneedcollection"), IRType::I1);
 
         self
     }
