@@ -21,12 +21,14 @@ class Heap {
     Heap(size_t size);
     void *allocate(size_t size, size_t *pointer_field_offs,
                    size_t pointer_field_offs_len);
+    char usage_percentage();
 };
 
 class Gc {
   private:
     static size_t GEN0_HEAP_SIZE;
     static size_t GEN1_INITIAL_HEAP_SIZE;
+    static char COLLECTION_THRESHOLD_PERCENTAGE;
 
     Heap *gen0_heap;
     Heap *gen1_heap;
@@ -37,6 +39,7 @@ class Gc {
     void *allocate(size_t size, size_t *pointer_field_offs,
                    size_t pointer_field_offs_len);
     void safepoint(unw_cursor_t *cursor);
+    bool need_collection();
 };
 
 #endif // GC_H
