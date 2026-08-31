@@ -6,8 +6,6 @@
 #include <cstring>
 #include <sys/mman.h>
 
-#include "safepoints.h"
-
 Heap::Heap(size_t size) {
     heap_size = size;
     heap_offset = 0;
@@ -17,6 +15,14 @@ Heap::Heap(size_t size) {
         printf("Failed to allocate new heap: %s\n", strerror(errno));
         std::exit(-1);
     }
+}
+
+void *Heap::start() {
+    return heap;
+}
+
+void *Heap::end() {
+    return (char *)heap + heap_size;
 }
 
 void *Heap::allocate(size_t size, size_t *pointer_field_offs,
@@ -44,10 +50,10 @@ char Heap::usage_percentage() {
 
 /*
  * Header format:
- *                      |xxxxxxx0|obj
- *             |xxxxxxxx|00000011|obj
- *    |xxxxxxxx|xxxxxxxx|00000101|obj
- * ...|xxxxxxxx|00000001|11111111|obj
+ *                      |xxxxxx0m|obj
+ *             |xxxxxxxx|0000011m|obj
+ *    |xxxxxxxx|xxxxxxxx|0000101m|obj
+ * ...|xxxxxxxx|00000001|1111111m|obj
  *
  * x: 0 -> not pointer, 1 -> pointer
  */
@@ -59,17 +65,17 @@ void Heap::write_header(void *obj_ptr, size_t *pointer_field_offs,
     if (header_size == 1) {
         int header = 0;
         for (int i = 0; i < pointer_field_offs_len; i++) {
-            header |= (1 << (pointer_field_offs[i] + 1));
+            header |= (2 << (pointer_field_offs[i] + 1));
         }
         *((char *)obj_ptr - 1) = header;
         return;
     }
 
     memset((char *)obj_ptr - header_size, 0, header_size);
-    *((char *)obj_ptr - 1) = 1 + ((header_size - 1) << 1);
+    *((char *)obj_ptr - 1) = 0b10 | ((header_size - 1) << 2);
 
-    // TODO: Handle writing header with pointer field offsets larger than 7
-    printf("pointer field offset larger than 7 is not yet handled\n");
+    // TODO: Handle writing header with pointer field offsets larger than 6
+    printf("pointer field offset larger than 6 is not yet handled\n");
     exit(-1);
 }
 
@@ -81,18 +87,18 @@ Heap::header_size_from_pointer_field_offs(size_t *pointer_field_offs,
 
     auto max_offset = pointer_field_offs[pointer_field_offs_len - 1];
 
-    if (max_offset < 7) {
+    if (max_offset < 6) {
         return 1;
     }
 
-    if (max_offset < (8 * 0x7f)) {
+    if (max_offset < (8 * 0x3f)) {
         return 2 + max_offset / 8;
     }
 
     // TODO: Handle calculating header size with pointer field offsets larger
-    // than (8 * 0x7f)
+    // than (8 * 0x3f)
     printf("pointer field offset larger than %d is not yet handled\n",
-           (8 * 0x7f));
+           (8 * 0x3f));
     exit(-1);
 }
 
@@ -124,6 +130,81 @@ void *Gc::allocate(size_t size, size_t *pointer_field_offs,
     return ptr;
 }
 
+std::queue<Location> work_q;
+std::unordered_map<void *, void *> relocations;
+
+bool is_moved(void *obj_addr) { return *((char *)obj_addr - 1) & 0b1; }
+void set_moved(void *obj_addr) { *((char *)obj_addr - 1) |= 0b1; }
+
+std::vector<size_t> get_pointer_offsets(void *obj_addr);
+
+void *move_to_gen1(void *obj_addr);
+
+bool Gc::is_gen0_addr(void *obj_addr) {
+    return (gen0_heap->start() <= obj_addr && obj_addr < gen0_heap->end());
+}
+
+void Gc::relocate(Location *location, void *new_addr) {
+    switch (location->type) {
+    case DIRECT: {
+        unw_word_t reg;
+        unw_get_reg(cursor, location->reg, &reg);
+        unw_set_reg(cursor, reg, (size_t)new_addr - location->offset);
+        break;
+    }
+    case INDIRECT: {
+        unw_word_t reg;
+        unw_get_reg(cursor, location->reg, &reg);
+        void **ind_addr = (void **)(reg + location->offset);
+        *ind_addr = new_addr;
+        break;
+    }
+    case CONSTANT:
+        *((void **)location->constant) = new_addr;
+        break;
+    }
+}
+
+void *Gc::get_obj_addr(Location *location) {
+    switch (location->type) {
+    case DIRECT: {
+        unw_word_t reg;
+        unw_get_reg(cursor, location->reg, &reg);
+        return (void *)(reg + location->offset);
+    }
+    case INDIRECT: {
+        unw_word_t reg;
+        unw_get_reg(cursor, location->reg, &reg);
+        void **ind_addr = (void **)(reg + location->offset);
+        return *ind_addr;
+    }
+    case CONSTANT:
+        return *((void **)location->constant);
+    }
+}
+
+void Gc::add_pointer_fields_to_work_q(void *obj_addr,
+                                      std::queue<Location> work_q) {
+    auto offsets = get_pointer_offsets(obj_addr);
+    for (auto offset : offsets) {
+        Location location = {LocationType::CONSTANT, 0, 0,
+                             (size_t)((char *)obj_addr + offset)};
+        auto *obj_addr = get_obj_addr(&location);
+
+        if (!is_gen0_addr(obj_addr)) {
+            continue;
+        }
+
+        if (is_moved(obj_addr)) {
+            auto *new_addr = relocations.at(obj_addr);
+            relocate(&location, new_addr);
+            continue;
+        }
+
+        work_q.push(location);
+    }
+}
+
 void Gc::safepoint(unw_cursor_t *cursor) {
     unw_word_t ip;
     unw_get_reg(cursor, UNW_REG_IP, &ip);
@@ -132,20 +213,45 @@ void Gc::safepoint(unw_cursor_t *cursor) {
     assert(iter != safepoints_map->end());
     Safepoint *record = iter->second;
 
+    // Populate work queue from stack map
     for (int i = 0; i < record->num_of_locations; i++) {
         auto location = record->obj_locations[i];
-        unw_word_t reg;
-        unw_get_reg(cursor, location.reg, &reg);
+        auto *obj_addr = get_obj_addr(&location);
 
-        void *obj_addr;
-        switch (location.type) {
-        case DIRECT:
-            obj_addr = (void *)(reg + location.offset);
-            break;
-        case INDIRECT:
-            void **ind_addr = (void **)(reg + location.offset);
-            obj_addr = *ind_addr;
-            break;
+        if (!is_gen0_addr(obj_addr)) {
+            continue;
+        }
+
+        work_q.push(location);
+    }
+
+    // Populate work queue from global GC roots
+    for (int i = 0; i < global_gcroots_len; i++) {
+        auto **glb_addr = (void **)global_gcroots[i];
+        auto *obj_addr = *glb_addr;
+
+        if (!is_gen0_addr(obj_addr)) {
+            continue;
+        }
+
+        Location location = {LocationType::CONSTANT, 0, 0, (size_t)glb_addr};
+        work_q.push(location);
+    }
+
+    // Process work queue
+    while (!work_q.empty()) {
+        auto location = work_q.front();
+        auto *obj_addr = get_obj_addr(&location);
+        work_q.pop();
+
+        if (is_moved(obj_addr)) {
+            auto *new_addr = relocations.at(obj_addr);
+            relocate(&location, new_addr);
+        } else {
+            auto *new_addr = move_to_gen1(obj_addr);
+            relocate(&location, new_addr);
+            set_moved(obj_addr);
+            add_pointer_fields_to_work_q(new_addr, work_q);
         }
     }
 }

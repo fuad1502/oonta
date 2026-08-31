@@ -5,14 +5,16 @@
 #ifndef __SAFEPOINTS_H
 #define __SAFEPOINTS_H
 
+#include <cstddef>
 #include <stdint.h>
 
-enum LocationType { DIRECT, INDIRECT };
+enum LocationType { DIRECT, INDIRECT, CONSTANT };
 
 struct Location {
   enum LocationType type;
   uint16_t reg;
   int32_t offset;
+  size_t constant;
 };
 
 struct Safepoint {
