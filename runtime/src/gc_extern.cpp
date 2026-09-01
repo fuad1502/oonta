@@ -6,9 +6,8 @@ static Gc gc{};
 
 char gcneedcollection = 0;
 
-extern "C" void *gcmalloc(size_t size, size_t *pointer_field_offs,
-                          size_t pointer_field_offs_len) {
-    void *ptr = gc.allocate(size, pointer_field_offs, pointer_field_offs_len);
+extern "C" void *gcmalloc(size_t size, size_t *type_info) {
+    void *ptr = gc.allocate(type_info);
 
     if (gc.need_collection()) {
         gcneedcollection = 1;

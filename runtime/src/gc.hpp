@@ -15,18 +15,11 @@ class Heap {
     size_t heap_size;
     size_t heap_offset;
 
-    size_t header_size_from_pointer_field_offs(size_t size,
-                                               size_t *pointer_field_offs,
-                                               size_t pointer_field_offs_len);
-    void write_header(void *obj_ptr, size_t size, size_t *pointer_field_offs,
-                      size_t pointer_field_offs_len);
-
-    static size_t get_header_offsets_size(void *obj_addr);
+    void write_header(void *obj_ptr, size_t *type_info);
 
   public:
     Heap(size_t size);
-    void *allocate(size_t size, size_t *pointer_field_offs,
-                   size_t pointer_field_offs_len);
+    void *allocate(size_t *type_info);
     void reset();
     void *start();
     void *end();
@@ -34,9 +27,11 @@ class Heap {
     char usage_percentage();
 
     static bool is_moved(void *obj_addr);
-    static void set_moved(void *obj_addr);
+    static void set_moved(void *obj_addr, void *new_addr);
     static size_t get_obj_size(void *obj_addr);
     static std::vector<size_t> get_pointer_offsets(void *obj_addr);
+    static size_t *get_type_info(void *obj_addr);
+    static void *get_forwarding_ptr(void *obj_addr);
 };
 
 class Gc {
@@ -50,7 +45,6 @@ class Gc {
     std::unordered_map<unw_word_t, struct Safepoint *> *safepoints_map;
 
     std::queue<Location> work_q;
-    std::unordered_map<void *, void *> relocations;
     unw_cursor_t *cursor;
 
     void *get_obj_addr(Location *location);
@@ -62,8 +56,7 @@ class Gc {
 
   public:
     Gc();
-    void *allocate(size_t size, size_t *pointer_field_offs,
-                   size_t pointer_field_offs_len);
+    void *allocate(size_t *type_info);
     void safepoint(unw_cursor_t *cursor);
     bool need_collection();
 };
