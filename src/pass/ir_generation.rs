@@ -1219,6 +1219,11 @@ impl<'a> IRBuilder<'a> {
         typs.iter()
             .enumerate()
             .filter_map(|(idx, typ)| {
+                assert!(
+                    typ.size() == 8,
+                    "Fields with size {} bytes is currently not supported",
+                    typ.size()
+                );
                 if typ.is_gcptr() {
                     Some(idx + starting_offset)
                 } else {

@@ -785,6 +785,20 @@ impl IRType {
     pub fn is_gcptr(&self) -> bool {
         matches!(self, IRType::GcPtr)
     }
+
+    pub fn size(&self) -> usize {
+        match self {
+            IRType::I1 => 1,
+            IRType::I8 => 1,
+            IRType::I32 => 4,
+            IRType::I64 => 8,
+            IRType::Ptr => 8,
+            IRType::GcPtr => 8,
+            IRType::Struct(typs) => typs.iter().map(Self::size).sum(),
+            IRType::Array(typ, num) => typ.size() * num,
+            IRType::Void => unreachable!(),
+        }
+    }
 }
 
 impl From<Rc<RefCell<Type>>> for IRType {
