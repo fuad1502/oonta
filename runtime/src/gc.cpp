@@ -17,25 +17,18 @@ Heap::Heap(size_t size) {
     }
 }
 
-void *Heap::allocate(size_t size, size_t *pointer_field_offs,
-                     size_t pointer_field_offs_len) {
-    // TODO: Handle object size larger than 255
-    assert(size <= 255);
+void *Heap::allocate(size_t *type_info) {
+    size_t size = type_info[0];
 
-    // TODO: Currently `pointer_field_offs` is assumed to be a multiple of 8
-    // bytes.
-
-    auto header_size = header_size_from_pointer_field_offs(
-        size, pointer_field_offs, pointer_field_offs_len);
-    auto total_size = header_size + size;
+    auto total_size = size + 8;
 
     if (heap_offset + total_size > heap_size) {
         return nullptr;
     }
 
-    auto *obj_ptr = (uint8_t *)heap + heap_offset + header_size;
+    auto *obj_ptr = (uint8_t *)heap + heap_offset + 8;
 
-    write_header(obj_ptr, size, pointer_field_offs, pointer_field_offs_len);
+    write_header(obj_ptr, type_info);
 
     heap_offset += total_size;
 
@@ -55,113 +48,64 @@ char Heap::usage_percentage() {
     return usage;
 }
 
-bool Heap::is_moved(void *obj_addr) { return *((uint8_t *)obj_addr - 1) & 0b1; }
+bool Heap::is_moved(void *obj_addr) {
+    size_t *header = (size_t *)obj_addr - 1;
 
-void Heap::set_moved(void *obj_addr) { *((uint8_t *)obj_addr - 1) |= 0b1; }
+    return (*header & 0b1);
+}
+
+void Heap::set_moved(void *obj_addr, void *new_addr) {
+    size_t *header = (size_t *)obj_addr - 1;
+
+    *header = 0b1;
+    *header |= ((size_t)new_addr << 1);
+}
 
 size_t Heap::get_obj_size(void *obj_addr) {
-    auto header_offsets_size = get_header_offsets_size(obj_addr);
+    size_t *header = (size_t *)obj_addr - 1;
+    assert((*header & 0b1) == 0);
+    size_t *type_info = (size_t *)(*header >> 1);
 
-    return *((uint8_t *)obj_addr - header_offsets_size - 2);
+    return type_info[0];
 }
 
 std::vector<size_t> Heap::get_pointer_offsets(void *obj_addr) {
+    size_t *header = (size_t *)obj_addr - 1;
+    assert((*header & 0b1) == 0);
+    size_t *type_info = (size_t *)(*header >> 1);
+
     std::vector<size_t> offsets;
-    auto header_offsets_size = get_header_offsets_size(obj_addr);
-
-    if (header_offsets_size == 0) {
-        uint8_t *header_start = (uint8_t *)obj_addr - 1;
-        uint8_t header_offsets = *header_start >> 2;
-        for (int i = 0; i < 6; i++) {
-            if (header_offsets >> i & 0b1) {
-                offsets.push_back(i);
-            }
-        }
-    } else {
-        uint8_t *offsets_start = (uint8_t *)obj_addr - 2;
-
-        // TODO: Handle writing header with pointer field offsets larger than 6
-        printf("pointer field offset larger than 6 is not yet handled\n");
-        exit(-1);
+    for (int i = 0; i < type_info[1]; i++) {
+        offsets.push_back(type_info[2 + i]);
     }
 
     return offsets;
 }
 
+size_t *Heap::get_type_info(void *obj_addr) {
+    size_t *header = (size_t *)obj_addr - 1;
+    assert((*header & 0b1) == 0);
+
+    return (size_t *)(*header >> 1);
+}
+
+void *Heap::get_forwarding_ptr(void *obj_addr) {
+    size_t *header = (size_t *)obj_addr - 1;
+    assert((*header & 0b1) == 1);
+
+    return (void *)(*header >> 1);
+}
+
 /*
  * Header format:
- *                           |ssssssss|xxxxxx0m|obj
- *                  |ssssssss|xxxxxxxx|0000011m|obj
- *         |ssssssss|xxxxxxxx|xxxxxxxx|0000101m|obj
- * ssssssss|........|xxxxxxxx|00000001|1111111m|obj
+ * |xxxxxxxx|xxxxxxxx|xxxxxxxx|xxxxxxxx|xxxxxxxx|xxxxxxxx|xxxxxxxx|xxxxxxxm|obj
  *
- * m: 0 -> not moved, 1 -> moved
- * x: 0 -> not pointer, 1 -> pointer
- * s: size
+ * m = 0 -> not moved, xxx... = type info pointer
+ * m = 1 -> moved, xxx... = new location
  */
-void Heap::write_header(void *obj_ptr, size_t size, size_t *pointer_field_offs,
-                        size_t pointer_field_offs_len) {
-    auto header_size = header_size_from_pointer_field_offs(
-        size, pointer_field_offs, pointer_field_offs_len);
-
-    if (header_size == 2) {
-        uint8_t header = 0;
-        for (int i = 0; i < pointer_field_offs_len; i++) {
-            header |= (2 << (pointer_field_offs[i] + 1));
-        }
-        *((uint8_t *)obj_ptr - 1) = header;
-        *((uint8_t *)obj_ptr - 2) = size;
-        return;
-    }
-
-    memset((uint8_t *)obj_ptr - header_size, 0, header_size);
-    *((uint8_t *)obj_ptr - 1) = 0b10 | ((header_size - 2) << 2);
-
-    // TODO: Handle writing header with pointer field offsets larger than 6
-    printf("pointer field offset larger than 6 is not yet handled\n");
-    exit(-1);
-}
-
-size_t Heap::header_size_from_pointer_field_offs(
-    size_t size, size_t *pointer_field_offs, size_t pointer_field_offs_len) {
-    if (pointer_field_offs == 0)
-        return 2;
-
-    auto max_offset = pointer_field_offs[pointer_field_offs_len - 1];
-
-    if (max_offset < 6) {
-        return 2;
-    }
-
-    if (max_offset < (8 * 0x3f)) {
-        return 3 + max_offset / 8;
-    }
-
-    // TODO: Handle calculating header size with pointer field offsets larger
-    // than (8 * 0x3f)
-    printf("pointer field offset larger than %d is not yet handled\n",
-           (8 * 0x3f));
-    exit(-1);
-}
-
-size_t Heap::get_header_offsets_size(void *obj_addr) {
-    uint8_t *header_start = (uint8_t *)obj_addr - 1;
-    uint8_t offsets_size_tag = ((*header_start >> 1) & 0b1);
-
-    if (offsets_size_tag == 0) {
-        return 0;
-    } else {
-        uint8_t header_offsets_size = *header_start >> 2;
-
-        if (header_offsets_size == 0x3f) {
-            // TODO: Handle calculating header size with pointer field offsets
-            // larger than (8 * 0x3f)
-            printf("pointer field offset larger than %d is not yet handled\n",
-                   (8 * 0x3f));
-            exit(-1);
-        }
-        return header_offsets_size;
-    }
+void Heap::write_header(void *obj_ptr, size_t *type_info) {
+    size_t *header = (size_t *)obj_ptr - 1;
+    *header = (size_t)type_info << 1;
 }
 
 size_t Gc::GEN0_HEAP_SIZE = 1024;
@@ -177,14 +121,10 @@ Gc::Gc() {
     for (int i = 0; i < safepoints_len; i++) {
         safepoints_map->insert({(unw_word_t)safepoints[i].ip, &safepoints[i]});
     }
-
-    relocations = std::unordered_map<void *, void *>();
 }
 
-void *Gc::allocate(size_t size, size_t *pointer_field_offs,
-                   size_t pointer_field_offs_len) {
-    auto *ptr =
-        gen0_heap->allocate(size, pointer_field_offs, pointer_field_offs_len);
+void *Gc::allocate(size_t *type_info) {
+    auto *ptr = gen0_heap->allocate(type_info);
 
     if (ptr == nullptr) {
         printf("Cannot allocate to generation 0 heap\n");
@@ -244,7 +184,6 @@ void Gc::safepoint(unw_cursor_t *cursor) {
     process_work_q();
 
     gen0_heap->reset();
-    relocations.clear();
 
     size_t gen0_usage_post = gen0_heap->usage();
     size_t gen1_usage_post = gen1_heap->usage();
@@ -290,12 +229,12 @@ void Gc::process_work_q() {
         work_q.pop();
 
         if (Heap::is_moved(obj_addr)) {
-            auto *new_addr = relocations.at(obj_addr);
+            auto *new_addr = Heap::get_forwarding_ptr(obj_addr);
             relocate(&location, new_addr);
         } else if (is_gen0_addr(obj_addr)) {
             auto *new_addr = move_to_gen1(obj_addr);
             relocate(&location, new_addr);
-            Heap::set_moved(obj_addr);
+            Heap::set_moved(obj_addr, new_addr);
             add_pointer_fields_to_work_q(new_addr);
         }
     }
@@ -323,14 +262,10 @@ void Gc::relocate(Location *location, void *new_addr) {
 }
 
 void *Gc::move_to_gen1(void *obj_addr) {
-    std::vector<size_t> offsets = Heap::get_pointer_offsets(obj_addr);
-    size_t size = Heap::get_obj_size(obj_addr);
-
-    auto *new_addr = gen1_heap->allocate(size, offsets.data(), offsets.size());
+    size_t *type_info = Heap::get_type_info(obj_addr);
+    size_t size = type_info[0];
+    auto *new_addr = gen1_heap->allocate(type_info);
     memcpy(new_addr, obj_addr, size);
-
-    relocations.insert({obj_addr, new_addr});
-
     return new_addr;
 }
 
@@ -339,7 +274,7 @@ void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
 
     for (auto offset : offsets) {
         Location location = {LocationType::CONSTANT, 0, 0,
-                             (size_t)((uint8_t *)obj_addr + 8 * offset)};
+                             (size_t)((uint8_t *)obj_addr + offset)};
         auto *obj_addr = get_obj_addr(&location);
 
         if (!is_gen0_addr(obj_addr)) {
@@ -347,7 +282,7 @@ void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
         }
 
         if (Heap::is_moved(obj_addr)) {
-            auto *new_addr = relocations.at(obj_addr);
+            auto *new_addr = Heap::get_forwarding_ptr(obj_addr);
             relocate(&location, new_addr);
             continue;
         }

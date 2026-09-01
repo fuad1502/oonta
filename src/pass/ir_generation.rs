@@ -27,7 +27,7 @@ pub struct IRBuilder<'a> {
     context: Option<Context>,
     module: Module,
     bind_name: Option<String>,
-    pointer_field_off_vals: HashMap<Vec<usize>, IRValue>,
+    type_infos: HashMap<Vec<usize>, IRValue>,
 }
 
 struct Context {
@@ -59,7 +59,7 @@ impl<'a> IRBuilder<'a> {
             context: Some(Context::new(main_fun_name, None)),
             module,
             bind_name: None,
-            pointer_field_off_vals: HashMap::new(),
+            type_infos: HashMap::new(),
         };
         if is_top_level {
             builder.call_runtime_init();
@@ -195,7 +195,7 @@ impl<'a> IRBuilder<'a> {
         self.pop_ctx();
         let closure_ptr = self.malloc(
             8 * (1 + fun_expr.captures.len()),
-            &Self::pointer_offs_from_typs(&env_typs, 1),
+            &Self::pointer_offs_from_typs(&env_typs, 8),
         );
 
         // > store anon function ptr
@@ -300,7 +300,7 @@ impl<'a> IRBuilder<'a> {
             IRType::Struct(vec![IRType::Ptr, IRType::Struct(env_typs.clone())]);
         let dispath_closure_ptr = self.malloc(
             8 * (1 + env_typs.len()),
-            &Self::pointer_offs_from_typs(&env_typs, 1),
+            &Self::pointer_offs_from_typs(&env_typs, 8),
         );
 
         // > store anon function ptr
@@ -373,7 +373,7 @@ impl<'a> IRBuilder<'a> {
         let cons_name = self.lexer.str_from_span(&construct_expr.cons);
         let tag = self.custom_types.get_constructor_idx(cons_name);
         let tag = IRValue::Pri(IRPri::I64(tag as i64));
-        let variant_ptr = self.malloc(8 * 2, &[1usize]);
+        let variant_ptr = self.malloc(8 * 2, &[8usize]);
         let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
         let ptr = self
             .curr_fun()
@@ -1158,13 +1158,13 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn malloc(&mut self, sz: usize, pointer_field_offs: &[usize]) -> IRValue {
-        let sz = IRValue::Pri(IRPri::I64(sz as i64));
+        let sz_val = IRValue::Pri(IRPri::I64(sz as i64));
         let gcmalloc = "gcmalloc".to_string();
         let ret_typ = match self.module.get_function_decl(&gcmalloc) {
             Some(malloc) => malloc.ret_typ().clone(),
             None => {
                 let ret_typ = IRType::GcPtr;
-                let param_typs = vec![IRType::I64, IRType::Ptr, IRType::I64];
+                let param_typs = vec![IRType::I64, IRType::Ptr];
                 let signature =
                     FunSignature::no_param_names(gcmalloc.clone(), ret_typ.clone(), param_typs)
                         .allocator_attr(true)
@@ -1175,13 +1175,9 @@ impl<'a> IRBuilder<'a> {
             }
         };
         let fun_ptr = IRValue::Global(gcmalloc, IRType::Ptr);
-        let pointer_field_offs_sz = IRValue::Pri(IRPri::I64(pointer_field_offs.len() as i64));
-        let pointer_field_offs_val = self.create_pointer_field_offs_val(pointer_field_offs);
-        self.curr_fun().normal_call(
-            fun_ptr,
-            ret_typ,
-            vec![sz, pointer_field_offs_val, pointer_field_offs_sz],
-        )
+        let type_info_val = self.create_type_info_val(sz, pointer_field_offs);
+        self.curr_fun()
+            .normal_call(fun_ptr, ret_typ, vec![sz_val, type_info_val])
     }
 
     fn is_polymorphic(&self, bind: &Bind) -> bool {
@@ -1192,45 +1188,35 @@ impl<'a> IRBuilder<'a> {
         is_polymorphic(typ)
     }
 
-    fn create_pointer_field_offs_val(&mut self, pointer_field_offs: &[usize]) -> IRValue {
-        if pointer_field_offs.is_empty() {
-            return IRValue::Pri(IRPri::I64(0));
-        }
-
-        let pointer_field_offs = Vec::from(pointer_field_offs);
-        if let Some(val) = self.pointer_field_off_vals.get(&pointer_field_offs) {
+    fn create_type_info_val(&mut self, sz: usize, pointer_field_offs: &[usize]) -> IRValue {
+        let mut type_info = Vec::from(pointer_field_offs);
+        type_info.insert(0, pointer_field_offs.len());
+        type_info.insert(0, sz);
+        if let Some(val) = self.type_infos.get(&type_info) {
             return val.clone();
         }
 
-        let pointer_field_offs_pri = IRPri::from(pointer_field_offs.clone());
-        let pointer_field_offs_typ = pointer_field_offs_pri.typ();
-        let pointer_field_offs_name = self
+        let type_info_pri = IRPri::from(type_info.clone());
+        let type_info_typ = type_info_pri.typ();
+        let type_info_name = self
             .module
-            .new_global_constant("oonta.ptr_field_offs", IRValue::Pri(pointer_field_offs_pri));
-        let pointer_field_offs_val =
-            IRValue::Global(pointer_field_offs_name, pointer_field_offs_typ);
+            .new_global_constant("oonta.type_info", IRValue::Pri(type_info_pri));
+        let type_info_val = IRValue::Global(type_info_name, type_info_typ);
 
-        self.pointer_field_off_vals
-            .insert(pointer_field_offs, pointer_field_offs_val.clone());
-        pointer_field_offs_val
+        self.type_infos.insert(type_info, type_info_val.clone());
+        type_info_val
     }
 
     fn pointer_offs_from_typs(typs: &[IRType], starting_offset: usize) -> Vec<usize> {
-        typs.iter()
-            .enumerate()
-            .filter_map(|(idx, typ)| {
-                assert!(
-                    typ.size() == 8,
-                    "Fields with size {} bytes is currently not supported",
-                    typ.size()
-                );
-                if typ.is_gcptr() {
-                    Some(idx + starting_offset)
-                } else {
-                    None
-                }
-            })
-            .collect()
+        let mut offsets = vec![];
+        let mut offset = 0;
+        for typ in typs {
+            if typ.is_gcptr() {
+                offsets.push(starting_offset + offset);
+            }
+            offset += typ.size();
+        }
+        offsets
     }
 }
 
