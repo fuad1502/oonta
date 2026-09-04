@@ -1,4 +1,5 @@
 #include "gc.hpp"
+#include "heap.hpp"
 
 #include <cassert>
 #include <cstdio>
@@ -6,15 +7,17 @@
 #include <cstring>
 #include <sys/mman.h>
 
-size_t Gc::GEN0_HEAP_SIZE = 8 * 1024;
+size_t Gc::GEN0_HEAP_SIZE = 32 * 1024;
 size_t Gc::GEN1_HEAP_SIZE = 2 * 1024 * 1024;
-size_t Gc::GEN2_INITIAL_HEAP_SIZE = 32 * 1024 * 1024;
-char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 50;
+size_t Gc::GEN2_INITIAL_HEAP_SIZE = 64 * 1024 * 1024;
+char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 80;
+size_t Gc::GEN2_PERCENTAGE_INCREMENT = 20;
 
 Gc::Gc() {
     heaps[0] = new Heap(GEN0_HEAP_SIZE);
     heaps[1] = new Heap(GEN1_HEAP_SIZE);
     heaps[2] = new Heap(GEN2_INITIAL_HEAP_SIZE);
+    gen2_heap_size = GEN2_INITIAL_HEAP_SIZE;
     gen_to_collect = HeapGenerations::Zero;
     next_heap = heaps[1];
 
@@ -35,26 +38,31 @@ void Gc::safepoint(unw_cursor_t cursor) {
     size_t collected_garbage;
 
     // Collect gen 0
-    unw_cursor_t gen0_cursor = cursor;
-    this->cursor = &gen0_cursor;
+    unw_cursor_t saved_cursor = cursor;
+    this->cursor = &saved_cursor;
     collected_garbage = collect();
 
-    // Collect gen 1
     gen_to_collect = HeapGenerations::One;
-    next_heap = heaps[2];
     if (need_collection()) {
-        unw_cursor_t gen1_cursor = cursor;
-        this->cursor = &gen1_cursor;
+        // Collect gen 1
+        unw_cursor_t saved_cursor = cursor;
+        this->cursor = &saved_cursor;
+        next_heap = heaps[2];
         collected_garbage = collect();
 
-        // Collect gen 2
         gen_to_collect = HeapGenerations::Two;
-        next_heap = nullptr;
         if (need_collection()) {
-            unw_cursor_t gen2_cursor = cursor;
-            this->cursor = &gen2_cursor;
-            printf("Collecting gen 2 is not yet handled\n");
-            std::exit(-1);
+            // Collect gen 2
+            unw_cursor_t saved_cursor = cursor;
+            this->cursor = &saved_cursor;
+
+            gen2_heap_size += gen2_heap_size / 100 * GEN2_PERCENTAGE_INCREMENT;
+            next_heap = new Heap(gen2_heap_size);
+
+            collected_garbage = collect();
+
+            delete heaps[2];
+            heaps[2] = next_heap;
         }
     }
 

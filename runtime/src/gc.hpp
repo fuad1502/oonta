@@ -22,8 +22,10 @@ class Gc {
     static size_t GEN1_HEAP_SIZE;
     static size_t GEN2_INITIAL_HEAP_SIZE;
     static char COLLECTION_THRESHOLD_PERCENTAGE;
+    static size_t GEN2_PERCENTAGE_INCREMENT;
 
     Heap *heaps[3];
+    size_t gen2_heap_size;
     std::unordered_map<unw_word_t, struct Safepoint *> *safepoints_map;
 
     std::queue<Location> work_q;

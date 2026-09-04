@@ -14,6 +14,7 @@ class Heap {
 
   public:
     Heap(size_t size);
+    ~Heap();
     void *allocate(size_t *type_info);
     void reset();
     void *start();

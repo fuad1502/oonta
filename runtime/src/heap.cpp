@@ -20,6 +20,14 @@ Heap::Heap(size_t size) {
     }
 }
 
+Heap::~Heap() {
+    int rc = munmap(heap, heap_size);
+    if (rc == -1) {
+        printf("Failed to release heap: %s\n", strerror(errno));
+        std::exit(-1);
+    }
+}
+
 void *Heap::allocate(size_t *type_info) {
     size_t size = type_info[0];
 
