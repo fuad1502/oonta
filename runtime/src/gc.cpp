@@ -148,6 +148,12 @@ void *Gc::copy_obj(void *obj_addr) {
     size_t *type_info = Heap::get_type_info(obj_addr);
     size_t size = type_info[0];
     auto *new_addr = next_heap->allocate(type_info);
+
+    if (new_addr == nullptr) {
+        printf("Cannot allocate in next generation heap\n");
+        exit(-1);
+    }
+
     memcpy(new_addr, obj_addr, size);
     return new_addr;
 }
@@ -204,6 +210,7 @@ Heap *Gc::heap_to_collect() {
     case HeapGenerations::Two:
         return heaps[2];
     }
+    assert(false);
 }
 
 bool Gc::is_addr_in_gen_to_collect(void *obj_addr) {
