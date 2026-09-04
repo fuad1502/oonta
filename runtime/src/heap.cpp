@@ -48,13 +48,13 @@ void *Heap::allocate(size_t *type_info) {
 
 void Heap::reset() { heap_offset = 0; }
 
-void *Heap::start() { return heap; }
+void *Heap::start() const { return heap; }
 
-void *Heap::end() { return (uint8_t *)heap + heap_size; }
+void *Heap::end() const { return (uint8_t *)heap + heap_size; }
 
-size_t Heap::usage() { return heap_offset; }
+size_t Heap::usage() const { return heap_offset; }
 
-char Heap::usage_percentage() {
+char Heap::usage_percentage() const {
     char usage = (100 * heap_offset) / heap_size;
     return usage;
 }
