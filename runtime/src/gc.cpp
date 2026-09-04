@@ -1,17 +1,22 @@
 #include "gc.hpp"
 
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <sys/mman.h>
 
 size_t Gc::GEN0_HEAP_SIZE = 1024;
-size_t Gc::GEN1_INITIAL_HEAP_SIZE = 2 * 1024 * 1024;
+size_t Gc::GEN1_HEAP_SIZE = 1024 * 1024;
+size_t Gc::GEN2_INITIAL_HEAP_SIZE = 2 * 1024 * 1024;
 char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 80;
 
 Gc::Gc() {
-    gen0_heap = new Heap(GEN0_HEAP_SIZE);
-    gen1_heap = new Heap(GEN1_INITIAL_HEAP_SIZE);
+    heaps[0] = new Heap(GEN0_HEAP_SIZE);
+    heaps[1] = new Heap(GEN1_HEAP_SIZE);
+    heaps[2] = new Heap(GEN2_INITIAL_HEAP_SIZE);
+    gen_to_collect = HeapGenerations::Zero;
+    next_heap = heaps[1];
 
     // TODO: create safepoints_map at compile-time
     safepoints_map = new std::unordered_map<unw_word_t, struct Safepoint *>();
@@ -21,7 +26,7 @@ Gc::Gc() {
 }
 
 void *Gc::allocate(size_t *type_info) {
-    auto *ptr = gen0_heap->allocate(type_info);
+    auto *ptr = heaps[0]->allocate(type_info);
 
     if (ptr == nullptr) {
         printf("Cannot allocate to generation 0 heap\n");
@@ -32,12 +37,45 @@ void *Gc::allocate(size_t *type_info) {
 }
 
 void Gc::safepoint(unw_cursor_t *cursor) {
-    size_t gen0_usage_pre = gen0_heap->usage();
-    size_t gen1_usage_pre = gen1_heap->usage();
+    size_t collected_garbage;
+
+    // Collect gen 0
+    this->cursor = cursor;
+    collected_garbage = collect();
+
+    // Collect gen 1
+    this->cursor = cursor;
+    gen_to_collect = HeapGenerations::One;
+    next_heap = heaps[2];
+    if (need_collection()) {
+        collected_garbage = collect();
+    }
+
+    // Collect gen 2
+    this->cursor = cursor;
+    gen_to_collect = HeapGenerations::Two;
+    next_heap = nullptr;
+    if (need_collection()) {
+        assert("Collecting gen 2 is not yet handled");
+        std::exit(-1);
+    }
+
+    // Reset collection states
+    this->cursor = nullptr;
+    gen_to_collect = HeapGenerations::Zero;
+    next_heap = heaps[1];
+}
+
+bool Gc::need_collection() {
+    return heap_to_collect()->usage_percentage() >
+           COLLECTION_THRESHOLD_PERCENTAGE;
+}
+
+size_t Gc::collect() {
+    size_t target_heap_usage_before = heap_to_collect()->usage();
+    size_t next_heap_usage_before = next_heap->usage();
 
     while ((size_t)cursor > 0) {
-        this->cursor = cursor;
-
         unw_word_t ip;
         unw_get_reg(cursor, UNW_REG_IP, &ip);
 
@@ -53,7 +91,7 @@ void Gc::safepoint(unw_cursor_t *cursor) {
             auto location = record->obj_locations[i];
             auto *obj_addr = get_obj_addr(&location);
 
-            if (!is_gen0_addr(obj_addr)) {
+            if (!is_addr_in_gen_to_collect(obj_addr)) {
                 continue;
             }
 
@@ -70,7 +108,7 @@ void Gc::safepoint(unw_cursor_t *cursor) {
         auto **glb_addr = (void **)global_gcroots[i];
         auto *obj_addr = *glb_addr;
 
-        if (!is_gen0_addr(obj_addr)) {
+        if (!is_addr_in_gen_to_collect(obj_addr)) {
             continue;
         }
 
@@ -80,43 +118,12 @@ void Gc::safepoint(unw_cursor_t *cursor) {
 
     process_work_q();
 
-    gen0_heap->reset();
+    heap_to_collect()->reset();
 
-    size_t gen0_usage_post = gen0_heap->usage();
-    size_t gen1_usage_post = gen1_heap->usage();
-    size_t collected_garbage =
-        gen0_usage_pre - (gen1_usage_post - gen1_usage_pre);
-}
-
-bool Gc::need_collection() {
-    return gen0_heap->usage_percentage() > COLLECTION_THRESHOLD_PERCENTAGE;
-}
-
-void *Gc::get_obj_addr(Location *location) {
-    void *obj_addr;
-    switch (location->type) {
-    case DIRECT: {
-        unw_word_t reg;
-        unw_get_reg(cursor, location->reg, &reg);
-        obj_addr = (void *)(reg + location->offset);
-        break;
-    }
-    case INDIRECT: {
-        unw_word_t reg;
-        unw_get_reg(cursor, location->reg, &reg);
-        void **ind_addr = (void **)(reg + location->offset);
-        obj_addr = *ind_addr;
-        break;
-    }
-    case CONSTANT:
-        obj_addr = *((void **)location->constant);
-        break;
-    }
-    return obj_addr;
-}
-
-bool Gc::is_gen0_addr(void *obj_addr) {
-    return (gen0_heap->start() <= obj_addr && obj_addr < gen0_heap->end());
+    size_t next_heap_usage_after = next_heap->usage();
+    size_t promoted_obj = (next_heap_usage_after - next_heap_usage_before);
+    size_t collected_garbage = target_heap_usage_before - promoted_obj;
+    return collected_garbage;
 }
 
 void Gc::process_work_q() {
@@ -128,12 +135,42 @@ void Gc::process_work_q() {
         if (Heap::is_moved(obj_addr)) {
             auto *new_addr = Heap::get_forwarding_ptr(obj_addr);
             relocate(&location, new_addr);
-        } else if (is_gen0_addr(obj_addr)) {
-            auto *new_addr = move_to_gen1(obj_addr);
+        } else if (is_addr_in_gen_to_collect(obj_addr)) {
+            auto *new_addr = copy_obj(obj_addr);
             relocate(&location, new_addr);
             Heap::set_moved(obj_addr, new_addr);
             add_pointer_fields_to_work_q(new_addr);
         }
+    }
+}
+
+void *Gc::copy_obj(void *obj_addr) {
+    size_t *type_info = Heap::get_type_info(obj_addr);
+    size_t size = type_info[0];
+    auto *new_addr = next_heap->allocate(type_info);
+    memcpy(new_addr, obj_addr, size);
+    return new_addr;
+}
+
+void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
+    auto offsets = Heap::get_pointer_offsets(obj_addr);
+
+    for (auto offset : offsets) {
+        Location location = {LocationType::CONSTANT, 0, 0,
+                             (size_t)((uint8_t *)obj_addr + offset)};
+        auto *obj_addr = get_obj_addr(&location);
+
+        if (!is_addr_in_gen_to_collect(obj_addr)) {
+            continue;
+        }
+
+        if (Heap::is_moved(obj_addr)) {
+            auto *new_addr = Heap::get_forwarding_ptr(obj_addr);
+            relocate(&location, new_addr);
+            continue;
+        }
+
+        work_q.push(location);
     }
 }
 
@@ -158,32 +195,41 @@ void Gc::relocate(Location *location, void *new_addr) {
     }
 }
 
-void *Gc::move_to_gen1(void *obj_addr) {
-    size_t *type_info = Heap::get_type_info(obj_addr);
-    size_t size = type_info[0];
-    auto *new_addr = gen1_heap->allocate(type_info);
-    memcpy(new_addr, obj_addr, size);
-    return new_addr;
+Heap *Gc::heap_to_collect() {
+    switch (gen_to_collect) {
+    case HeapGenerations::Zero:
+        return heaps[0];
+    case HeapGenerations::One:
+        return heaps[1];
+    case HeapGenerations::Two:
+        return heaps[2];
+    }
 }
 
-void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
-    auto offsets = Heap::get_pointer_offsets(obj_addr);
+bool Gc::is_addr_in_gen_to_collect(void *obj_addr) {
+    return (heap_to_collect()->start() <= obj_addr &&
+            obj_addr < heap_to_collect()->end());
+}
 
-    for (auto offset : offsets) {
-        Location location = {LocationType::CONSTANT, 0, 0,
-                             (size_t)((uint8_t *)obj_addr + offset)};
-        auto *obj_addr = get_obj_addr(&location);
-
-        if (!is_gen0_addr(obj_addr)) {
-            continue;
-        }
-
-        if (Heap::is_moved(obj_addr)) {
-            auto *new_addr = Heap::get_forwarding_ptr(obj_addr);
-            relocate(&location, new_addr);
-            continue;
-        }
-
-        work_q.push(location);
+void *Gc::get_obj_addr(Location *location) {
+    void *obj_addr;
+    switch (location->type) {
+    case DIRECT: {
+        unw_word_t reg;
+        unw_get_reg(cursor, location->reg, &reg);
+        obj_addr = (void *)(reg + location->offset);
+        break;
     }
+    case INDIRECT: {
+        unw_word_t reg;
+        unw_get_reg(cursor, location->reg, &reg);
+        void **ind_addr = (void **)(reg + location->offset);
+        obj_addr = *ind_addr;
+        break;
+    }
+    case CONSTANT:
+        obj_addr = *((void **)location->constant);
+        break;
+    }
+    return obj_addr;
 }
