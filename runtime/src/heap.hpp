@@ -10,17 +10,17 @@ class Heap {
     size_t heap_size;
     size_t heap_offset;
 
-    void write_header(void *obj_ptr, size_t *type_info);
+    static void write_header(void *obj_ptr, size_t *type_info);
 
   public:
     Heap(size_t size);
     ~Heap();
     void *allocate(size_t *type_info);
     void reset();
-    void *start();
-    void *end();
-    size_t usage();
-    char usage_percentage();
+    void *start() const;
+    void *end() const;
+    size_t usage() const;
+    char usage_percentage() const;
 
     static bool is_moved(void *obj_addr);
     static void set_moved(void *obj_addr, void *new_addr);

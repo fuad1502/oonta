@@ -72,7 +72,7 @@ void Gc::safepoint(unw_cursor_t cursor) {
     next_heap = heaps[1];
 }
 
-bool Gc::need_collection() {
+bool Gc::need_collection() const {
     return heap_to_collect()->usage_percentage() >
            COLLECTION_THRESHOLD_PERCENTAGE;
 }
@@ -186,7 +186,7 @@ void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
     }
 }
 
-void Gc::relocate(Location *location, void *new_addr) {
+void Gc::relocate(Location *location, void *new_addr) const {
     switch (location->type) {
     case DIRECT: {
         unw_word_t reg;
@@ -207,7 +207,7 @@ void Gc::relocate(Location *location, void *new_addr) {
     }
 }
 
-Heap *Gc::heap_to_collect() {
+Heap *Gc::heap_to_collect() const {
     switch (gen_to_collect) {
     case HeapGenerations::Zero:
         return heaps[0];
@@ -219,12 +219,12 @@ Heap *Gc::heap_to_collect() {
     assert(false);
 }
 
-bool Gc::is_addr_in_gen_to_collect(void *obj_addr) {
+bool Gc::is_addr_in_gen_to_collect(void *obj_addr) const {
     return (heap_to_collect()->start() <= obj_addr &&
             obj_addr < heap_to_collect()->end());
 }
 
-void *Gc::get_obj_addr(Location *location) {
+void *Gc::get_obj_addr(Location *location) const {
     void *obj_addr;
     switch (location->type) {
     case DIRECT: {

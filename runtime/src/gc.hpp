@@ -37,16 +37,16 @@ class Gc {
     void process_work_q();
     void *copy_obj(void *obj_addr);
     void add_pointer_fields_to_work_q(void *obj_addr);
-    void relocate(Location *location, void *new_addr);
-    Heap *heap_to_collect();
-    bool is_addr_in_gen_to_collect(void *obj_addr);
-    void *get_obj_addr(Location *location);
+    void relocate(Location *location, void *new_addr) const;
+    Heap *heap_to_collect() const;
+    bool is_addr_in_gen_to_collect(void *obj_addr) const;
+    void *get_obj_addr(Location *location) const;
 
   public:
     Gc();
     void *allocate(size_t *type_info);
     void safepoint(unw_cursor_t cursor);
-    bool need_collection();
+    bool need_collection() const;
 };
 
 #endif // GC_H
