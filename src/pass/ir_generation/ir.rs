@@ -697,7 +697,7 @@ impl std::fmt::Display for InstrClass {
                 write!(fmt, ")")
             }
             InstrClass::GetElemPtr(irtype, src, indexes) => {
-                write!(fmt, "getelementptr {irtype}, {src}, ")?;
+                write!(fmt, "getelementptr inbounds {irtype}, {src}, ")?;
                 write_comma_separated(indexes, fmt)
             }
             InstrClass::Return(val) => write!(fmt, "ret {val}"),
