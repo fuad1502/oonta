@@ -583,7 +583,7 @@ impl FunOptions {
 
     fn fun_attr_str(&self) -> &str {
         if self.allocator {
-            "mustprogress nofree nounwind willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite)"
+            "mustprogress nofree willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite)"
         } else {
             ""
         }

@@ -43,7 +43,7 @@ class Gc {
   public:
     Gc();
     void *allocate(size_t *type_info);
-    void safepoint(unw_cursor_t *cursor);
+    void safepoint(unw_cursor_t cursor);
     bool need_collection();
 };
 

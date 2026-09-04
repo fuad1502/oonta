@@ -6,10 +6,10 @@
 #include <cstring>
 #include <sys/mman.h>
 
-size_t Gc::GEN0_HEAP_SIZE = 1024;
-size_t Gc::GEN1_HEAP_SIZE = 1024 * 1024;
-size_t Gc::GEN2_INITIAL_HEAP_SIZE = 2 * 1024 * 1024;
-char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 80;
+size_t Gc::GEN0_HEAP_SIZE = 8 * 1024;
+size_t Gc::GEN1_HEAP_SIZE = 2 * 1024 * 1024;
+size_t Gc::GEN2_INITIAL_HEAP_SIZE = 32 * 1024 * 1024;
+char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 50;
 
 Gc::Gc() {
     heaps[0] = new Heap(GEN0_HEAP_SIZE);
@@ -28,36 +28,34 @@ Gc::Gc() {
 void *Gc::allocate(size_t *type_info) {
     auto *ptr = heaps[0]->allocate(type_info);
 
-    if (ptr == nullptr) {
-        printf("Cannot allocate to generation 0 heap\n");
-        exit(-1);
-    }
-
     return ptr;
 }
 
-void Gc::safepoint(unw_cursor_t *cursor) {
+void Gc::safepoint(unw_cursor_t cursor) {
     size_t collected_garbage;
 
     // Collect gen 0
-    this->cursor = cursor;
+    unw_cursor_t gen0_cursor = cursor;
+    this->cursor = &gen0_cursor;
     collected_garbage = collect();
 
     // Collect gen 1
-    this->cursor = cursor;
     gen_to_collect = HeapGenerations::One;
     next_heap = heaps[2];
     if (need_collection()) {
+        unw_cursor_t gen1_cursor = cursor;
+        this->cursor = &gen1_cursor;
         collected_garbage = collect();
-    }
 
-    // Collect gen 2
-    this->cursor = cursor;
-    gen_to_collect = HeapGenerations::Two;
-    next_heap = nullptr;
-    if (need_collection()) {
-        assert("Collecting gen 2 is not yet handled");
-        std::exit(-1);
+        // Collect gen 2
+        gen_to_collect = HeapGenerations::Two;
+        next_heap = nullptr;
+        if (need_collection()) {
+            unw_cursor_t gen2_cursor = cursor;
+            this->cursor = &gen2_cursor;
+            printf("Collecting gen 2 is not yet handled\n");
+            std::exit(-1);
+        }
     }
 
     // Reset collection states
