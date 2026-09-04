@@ -7,10 +7,10 @@
 #include <cstring>
 #include <sys/mman.h>
 
-size_t Gc::GEN0_HEAP_SIZE = 32 * 1024;
-size_t Gc::GEN1_HEAP_SIZE = 2 * 1024 * 1024;
-size_t Gc::GEN2_INITIAL_HEAP_SIZE = 64 * 1024 * 1024;
-char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 80;
+size_t Gc::GEN0_HEAP_SIZE = 64 * 1024 * 1024;
+size_t Gc::GEN1_HEAP_SIZE = 256 * 1024 * 1024;
+size_t Gc::GEN2_INITIAL_HEAP_SIZE = 1024 * 1024 * 1024;
+char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 50;
 size_t Gc::GEN2_PERCENTAGE_INCREMENT = 20;
 
 Gc::Gc() {
