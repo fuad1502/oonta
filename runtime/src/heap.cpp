@@ -9,9 +9,12 @@
 #include <cstring>
 #include <sys/mman.h>
 
+size_t Heap::LIMIT_PERCENTAGE = 50;
+
 Heap::Heap(size_t size) {
     heap_size = size;
     heap_offset = 0;
+    heap_limit = size * LIMIT_PERCENTAGE / 100;
     heap = mmap(NULL, heap_size, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (heap == MAP_FAILED) {
@@ -54,10 +57,7 @@ void *Heap::end() const { return (uint8_t *)heap + heap_size; }
 
 size_t Heap::usage() const { return heap_offset; }
 
-char Heap::usage_percentage() const {
-    char usage = (100 * heap_offset) / heap_size;
-    return usage;
-}
+bool Heap::need_collection() const { return heap_offset > heap_limit; }
 
 bool Heap::is_moved(void *obj_addr) {
     size_t *header = (size_t *)obj_addr - 1;
@@ -78,19 +78,6 @@ size_t Heap::get_obj_size(void *obj_addr) {
     size_t *type_info = (size_t *)(*header >> 1);
 
     return type_info[0];
-}
-
-std::vector<size_t> Heap::get_pointer_offsets(void *obj_addr) {
-    size_t *header = (size_t *)obj_addr - 1;
-    assert((*header & 0b1) == 0);
-    size_t *type_info = (size_t *)(*header >> 1);
-
-    std::vector<size_t> offsets;
-    for (int i = 0; i < type_info[1]; i++) {
-        offsets.push_back(type_info[2 + i]);
-    }
-
-    return offsets;
 }
 
 size_t *Heap::get_type_info(void *obj_addr) {

@@ -10,7 +10,6 @@
 size_t Gc::GEN0_HEAP_SIZE = 64 * 1024 * 1024;
 size_t Gc::GEN1_HEAP_SIZE = 256 * 1024 * 1024;
 size_t Gc::GEN2_INITIAL_HEAP_SIZE = 1024 * 1024 * 1024;
-char Gc::COLLECTION_THRESHOLD_PERCENTAGE = 50;
 size_t Gc::GEN2_PERCENTAGE_INCREMENT = 20;
 
 Gc::Gc() {
@@ -73,8 +72,7 @@ void Gc::safepoint(unw_cursor_t cursor) {
 }
 
 bool Gc::need_collection() const {
-    return heap_to_collect()->usage_percentage() >
-           COLLECTION_THRESHOLD_PERCENTAGE;
+    return heap_to_collect()->need_collection();
 }
 
 size_t Gc::collect() {
@@ -165,11 +163,11 @@ void *Gc::copy_obj(void *obj_addr) {
 }
 
 void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
-    auto offsets = Heap::get_pointer_offsets(obj_addr);
+    auto *type_info = Heap::get_type_info(obj_addr);
 
-    for (auto offset : offsets) {
+    for (int i = 0; i < type_info[1]; i++) {
         Location location = {LocationType::CONSTANT, 0, 0,
-                             (size_t)((uint8_t *)obj_addr + offset)};
+                             (size_t)((uint8_t *)obj_addr + type_info[2 + i])};
         auto *obj_addr = get_obj_addr(&location);
 
         if (!is_addr_in_gen_to_collect(obj_addr)) {
