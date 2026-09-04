@@ -370,22 +370,32 @@ impl<'a> IRBuilder<'a> {
     }
 
     fn visit_construct_expr(&mut self, construct_expr: &ConstructExpr) -> IRValue {
+        // Argument must be evaluated first
+        let value = construct_expr
+            .arg
+            .as_ref()
+            .map(|arg| self.visit_expr(&arg.borrow()));
+
         let cons_name = self.lexer.str_from_span(&construct_expr.cons);
         let tag = self.custom_types.get_constructor_idx(cons_name);
         let tag = IRValue::Pri(IRPri::I64(tag as i64));
         let variant_ptr = self.malloc(8 * 2, &[8usize]);
         let variant_typ = IRType::Struct(vec![IRType::I64, IRType::GcPtr]);
+
+        // Store constructor tag
         let ptr = self
             .curr_fun()
             .getelemptr(variant_typ.clone(), variant_ptr.clone(), &[0, 0]);
         self.curr_fun().store(tag, ptr);
-        if let Some(arg) = &construct_expr.arg {
+
+        // Store constructor argument
+        if let Some(value) = value {
             let ptr = self
                 .curr_fun()
                 .getelemptr(variant_typ, variant_ptr.clone(), &[0, 1]);
-            let value = self.visit_expr(&arg.borrow());
             self.curr_fun().store(value, ptr);
         }
+
         variant_ptr
     }
 
