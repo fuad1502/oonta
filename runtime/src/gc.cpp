@@ -7,21 +7,6 @@
 #include <cstring>
 #include <sys/mman.h>
 
-Gc::Gc() {
-    heaps[0] = new Heap(GEN0_HEAP_SIZE);
-    heaps[1] = new Heap(GEN1_HEAP_SIZE);
-    heaps[2] = new Heap(GEN2_INITIAL_HEAP_SIZE);
-    gen2_heap_size = GEN2_INITIAL_HEAP_SIZE;
-    gen_to_collect = HeapGenerations::Zero;
-    next_heap = heaps[1];
-
-    // TODO: create safepoints_map at compile-time
-    safepoints_map = new std::unordered_map<unw_word_t, struct Safepoint *>();
-    for (int i = 0; i < safepoints_len; i++) {
-        safepoints_map->insert({(unw_word_t)safepoints[i].ip, &safepoints[i]});
-    }
-}
-
 void Gc::safepoint(unw_cursor_t cursor) {
     size_t collected_garbage;
 
@@ -29,6 +14,13 @@ void Gc::safepoint(unw_cursor_t cursor) {
     unw_cursor_t saved_cursor = cursor;
     this->cursor = &saved_cursor;
     collected_garbage = collect();
+
+    // Calculate new gen 0 limit
+    auto new_limit =
+        100 / MAX_SURVIVOR_RATE * (heaps[0]->limit() - collected_garbage);
+    new_limit =
+        (new_limit < GEN0_INITIAL_LIMIT) ? GEN0_INITIAL_LIMIT : new_limit;
+    heaps[0]->set_limit(new_limit);
 
     gen_to_collect = HeapGenerations::One;
     if (need_collection()) {
@@ -38,14 +30,23 @@ void Gc::safepoint(unw_cursor_t cursor) {
         next_heap = heaps[2];
         collected_garbage = collect();
 
+        // Calculate new gen 1 limit
+        auto new_limit =
+            100 / MAX_SURVIVOR_RATE * (heaps[1]->limit() - collected_garbage);
+        new_limit =
+            (new_limit < GEN1_INITIAL_LIMIT) ? GEN1_INITIAL_LIMIT : new_limit;
+        heaps[1]->set_limit(new_limit);
+
         gen_to_collect = HeapGenerations::Two;
         if (need_collection()) {
             // Collect gen 2
             unw_cursor_t saved_cursor = cursor;
             this->cursor = &saved_cursor;
 
-            gen2_heap_size += gen2_heap_size / 100 * GEN2_PERCENTAGE_INCREMENT;
-            next_heap = new Heap(gen2_heap_size);
+            // Allocate new heap
+            auto new_limit = heaps[2]->limit();
+            new_limit += new_limit / 100 * GEN2_PERCENTAGE_INCREMENT;
+            next_heap = new Heap(MAX_RESERVED_ADDRESS_SPACE, new_limit);
 
             collected_garbage = collect();
 

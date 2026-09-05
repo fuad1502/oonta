@@ -12,8 +12,6 @@
 
 class Heap {
   private:
-    inline static size_t LIMIT_PERCENTAGE = 50;
-
     void *heap;
     size_t heap_size;
     size_t heap_offset;
@@ -22,10 +20,12 @@ class Heap {
     static void write_header(void *obj_ptr, size_t *type_info);
 
   public:
-    Heap(size_t size);
+    Heap(size_t size, size_t limit);
     ~Heap();
     void *allocate(size_t *type_info);
+    void set_limit(size_t limit);
     void reset();
+    size_t limit() const;
     void *start() const;
     void *end() const;
     size_t usage() const;
@@ -38,10 +38,11 @@ class Heap {
     static void *get_forwarding_ptr(void *obj_addr);
 };
 
-inline Heap::Heap(size_t size) {
+inline Heap::Heap(size_t size, size_t limit) {
+    assert(limit <= size);
     heap_size = size;
     heap_offset = 0;
-    heap_limit = size * LIMIT_PERCENTAGE / 100;
+    heap_limit = limit;
     heap = mmap(NULL, heap_size, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (heap == MAP_FAILED) {
@@ -76,7 +77,14 @@ inline void *Heap::allocate(size_t *type_info) {
     return obj_ptr;
 }
 
+inline void Heap::set_limit(size_t limit) {
+    assert(limit <= heap_size);
+    heap_limit = limit;
+}
+
 inline void Heap::reset() { heap_offset = 0; }
+
+inline size_t Heap::limit() const { return heap_limit; }
 
 inline void *Heap::start() const { return heap; }
 
@@ -84,7 +92,7 @@ inline void *Heap::end() const { return (uint8_t *)heap + heap_size; }
 
 inline size_t Heap::usage() const { return heap_offset; }
 
-inline bool Heap::need_collection() const { return heap_offset > heap_limit; }
+inline bool Heap::need_collection() const { return heap_offset >= heap_limit; }
 
 inline bool Heap::is_moved(void *obj_addr) {
     size_t *header = (size_t *)obj_addr - 1;
