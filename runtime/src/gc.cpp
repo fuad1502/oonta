@@ -85,7 +85,7 @@ size_t Gc::collect() {
                 continue;
             }
 
-            work_q.push(location);
+            work_q.push_back(location);
         }
 
         process_work_q();
@@ -103,7 +103,7 @@ size_t Gc::collect() {
         }
 
         Location location = {LocationType::CONSTANT, 0, 0, (size_t)glb_addr};
-        work_q.push(location);
+        work_q.push_back(location);
     }
 
     process_work_q();
@@ -118,9 +118,9 @@ size_t Gc::collect() {
 
 void Gc::process_work_q() {
     while (!work_q.empty()) {
-        auto location = work_q.front();
+        auto location = work_q.back();
         auto *obj_addr = get_obj_addr(&location);
-        work_q.pop();
+        work_q.pop_back();
 
         if (Heap::is_moved(obj_addr)) {
             auto *new_addr = Heap::get_forwarding_ptr(obj_addr);
@@ -152,6 +152,6 @@ void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
             continue;
         }
 
-        work_q.push(location);
+        work_q.push_back(location);
     }
 }
