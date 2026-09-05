@@ -119,13 +119,13 @@ impl Compiler {
             fs::copy(out_path, out_path.with_extension("noopt.ll")).map_err(|e| e.to_string())?;
         }
 
-        run_gc_passes(out_path)?;
-
         if self.optimize_ir {
             self.dbg_start("Optimize LLVM IR");
             optimize_llvm_ir(out_path)?;
             self.dbg_end();
         }
+
+        run_gc_passes(out_path)?;
 
         if self.create_obj_file {
             self.dbg_start("LLVM backend");
