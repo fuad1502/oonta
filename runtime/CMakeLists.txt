@@ -23,7 +23,6 @@ add_library(oonta_runtime STATIC
 	src/runtime_extern.cpp
 	src/gc_extern.cpp
 	src/gc.cpp
-  src/heap.cpp
 )
 
 target_include_directories(oonta_runtime PUBLIC ${UNWIND_INCLUDE_DIR})
