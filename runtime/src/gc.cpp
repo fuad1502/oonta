@@ -7,11 +7,6 @@
 #include <cstring>
 #include <sys/mman.h>
 
-size_t Gc::GEN0_HEAP_SIZE = 64 * 1024 * 1024;
-size_t Gc::GEN1_HEAP_SIZE = 256 * 1024 * 1024;
-size_t Gc::GEN2_INITIAL_HEAP_SIZE = 1024 * 1024 * 1024;
-size_t Gc::GEN2_PERCENTAGE_INCREMENT = 20;
-
 Gc::Gc() {
     heaps[0] = new Heap(GEN0_HEAP_SIZE);
     heaps[1] = new Heap(GEN1_HEAP_SIZE);
@@ -25,12 +20,6 @@ Gc::Gc() {
     for (int i = 0; i < safepoints_len; i++) {
         safepoints_map->insert({(unw_word_t)safepoints[i].ip, &safepoints[i]});
     }
-}
-
-void *Gc::allocate(size_t *type_info) {
-    auto *ptr = heaps[0]->allocate(type_info);
-
-    return ptr;
 }
 
 void Gc::safepoint(unw_cursor_t cursor) {
@@ -69,10 +58,6 @@ void Gc::safepoint(unw_cursor_t cursor) {
     this->cursor = nullptr;
     gen_to_collect = HeapGenerations::Zero;
     next_heap = heaps[1];
-}
-
-bool Gc::need_collection() const {
-    return heap_to_collect()->need_collection();
 }
 
 size_t Gc::collect() {
@@ -148,20 +133,6 @@ void Gc::process_work_q() {
     }
 }
 
-void *Gc::copy_obj(void *obj_addr) {
-    size_t *type_info = Heap::get_type_info(obj_addr);
-    size_t size = type_info[0];
-    auto *new_addr = next_heap->allocate(type_info);
-
-    if (new_addr == nullptr) {
-        printf("Cannot allocate in next generation heap\n");
-        exit(-1);
-    }
-
-    memcpy(new_addr, obj_addr, size);
-    return new_addr;
-}
-
 void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
     auto *type_info = Heap::get_type_info(obj_addr);
 
@@ -182,65 +153,4 @@ void Gc::add_pointer_fields_to_work_q(void *obj_addr) {
 
         work_q.push(location);
     }
-}
-
-void Gc::relocate(Location *location, void *new_addr) const {
-    switch (location->type) {
-    case DIRECT: {
-        unw_word_t reg;
-        unw_get_reg(cursor, location->reg, &reg);
-        unw_set_reg(cursor, reg, (size_t)new_addr - location->offset);
-        break;
-    }
-    case INDIRECT: {
-        unw_word_t reg;
-        unw_get_reg(cursor, location->reg, &reg);
-        void **ind_addr = (void **)(reg + location->offset);
-        *ind_addr = new_addr;
-        break;
-    }
-    case CONSTANT:
-        *((void **)location->constant) = new_addr;
-        break;
-    }
-}
-
-Heap *Gc::heap_to_collect() const {
-    switch (gen_to_collect) {
-    case HeapGenerations::Zero:
-        return heaps[0];
-    case HeapGenerations::One:
-        return heaps[1];
-    case HeapGenerations::Two:
-        return heaps[2];
-    }
-    assert(false);
-}
-
-bool Gc::is_addr_in_gen_to_collect(void *obj_addr) const {
-    return (heap_to_collect()->start() <= obj_addr &&
-            obj_addr < heap_to_collect()->end());
-}
-
-void *Gc::get_obj_addr(Location *location) const {
-    void *obj_addr;
-    switch (location->type) {
-    case DIRECT: {
-        unw_word_t reg;
-        unw_get_reg(cursor, location->reg, &reg);
-        obj_addr = (void *)(reg + location->offset);
-        break;
-    }
-    case INDIRECT: {
-        unw_word_t reg;
-        unw_get_reg(cursor, location->reg, &reg);
-        void **ind_addr = (void **)(reg + location->offset);
-        obj_addr = *ind_addr;
-        break;
-    }
-    case CONSTANT:
-        obj_addr = *((void **)location->constant);
-        break;
-    }
-    return obj_addr;
 }
