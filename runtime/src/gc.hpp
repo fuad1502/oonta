@@ -18,13 +18,14 @@ enum class HeapGenerations {
 
 class Gc {
   private:
-    static inline size_t GEN0_HEAP_SIZE = 64 * 1024 * 1024;
-    static inline size_t GEN1_HEAP_SIZE = 256 * 1024 * 1024;
-    static inline size_t GEN2_INITIAL_HEAP_SIZE = 1024 * 1024 * 1024;
+    static inline size_t MAX_RESERVED_ADDRESS_SPACE = 1024 * 1024 * 1024;
+    static inline size_t GEN0_INITIAL_LIMIT = 16 * 1024 * 1024;
+    static inline size_t GEN1_INITIAL_LIMIT = 32 * 1024 * 1024;
+    static inline size_t GEN2_INITIAL_LIMIT = 256 * 1024 * 1024;
     static inline size_t GEN2_PERCENTAGE_INCREMENT = 20;
+    static inline size_t MAX_SURVIVOR_RATE = 20;
 
     Heap *heaps[3];
-    size_t gen2_heap_size;
     std::unordered_map<unw_word_t, struct Safepoint *> *safepoints_map;
 
     std::queue<Location> work_q;
@@ -48,6 +49,20 @@ class Gc {
     bool need_collection() const;
     void safepoint(unw_cursor_t cursor);
 };
+
+inline Gc::Gc() {
+    heaps[0] = new Heap(MAX_RESERVED_ADDRESS_SPACE, GEN0_INITIAL_LIMIT);
+    heaps[1] = new Heap(MAX_RESERVED_ADDRESS_SPACE, GEN1_INITIAL_LIMIT);
+    heaps[2] = new Heap(MAX_RESERVED_ADDRESS_SPACE, GEN2_INITIAL_LIMIT);
+    gen_to_collect = HeapGenerations::Zero;
+    next_heap = heaps[1];
+
+    // TODO: create safepoints_map at compile-time
+    safepoints_map = new std::unordered_map<unw_word_t, struct Safepoint *>();
+    for (int i = 0; i < safepoints_len; i++) {
+        safepoints_map->insert({(unw_word_t)safepoints[i].ip, &safepoints[i]});
+    }
+}
 
 inline void *Gc::allocate(size_t *type_info) const {
     auto *ptr = heaps[0]->allocate(type_info);
