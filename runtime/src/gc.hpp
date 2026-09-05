@@ -4,8 +4,8 @@
 #include "heap.hpp"
 #include "safepoints.h"
 
-#include <queue>
 #include <unordered_map>
+#include <vector>
 
 #define UNW_LOCAL_ONLY
 #include "libunwind.h"
@@ -28,7 +28,7 @@ class Gc {
     Heap *heaps[3];
     std::unordered_map<unw_word_t, struct Safepoint *> *safepoints_map;
 
-    std::queue<Location> work_q;
+    std::vector<Location> work_q;
     unw_cursor_t *cursor;
     HeapGenerations gen_to_collect;
     Heap *next_heap;
