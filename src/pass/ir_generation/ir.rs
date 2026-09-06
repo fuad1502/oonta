@@ -578,7 +578,7 @@ impl std::fmt::Display for FunSignature {
 impl FunOptions {
     fn cc_str(&self) -> &'static str {
         // TODO: use other calling convention for fast call
-        if self.fastcc { "ccc" } else { "" }
+        if self.fastcc { "fastcc" } else { "" }
     }
 
     fn fun_attr_str(&self) -> &str {
@@ -691,7 +691,7 @@ impl std::fmt::Display for InstrClass {
             InstrClass::Store(src, dst) => write!(fmt, "store {src}, {}", dst),
             InstrClass::Call(fun_ptr, ret_typ, args, fast) => {
                 // TODO: use other calling convention for fast call
-                let cc = if *fast { "ccc" } else { "" };
+                let cc = if *fast { "fastcc" } else { "" };
                 write!(fmt, "call {cc} {ret_typ} {}(", fun_ptr.name())?;
                 write_comma_separated(args, fmt)?;
                 write!(fmt, ")")
