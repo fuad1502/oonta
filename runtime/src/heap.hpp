@@ -39,10 +39,9 @@ class Heap {
 };
 
 inline Heap::Heap(size_t size, size_t limit) {
-    assert(limit <= size);
     heap_size = size;
     heap_offset = 0;
-    heap_limit = limit;
+    heap_limit = limit > size ? size : limit;
     heap = mmap(NULL, heap_size, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (heap == MAP_FAILED) {
@@ -78,8 +77,7 @@ inline void *Heap::allocate(size_t *type_info) {
 }
 
 inline void Heap::set_limit(size_t limit) {
-    assert(limit <= heap_size);
-    heap_limit = limit;
+    heap_limit = limit > heap_size ? heap_size : limit;
 }
 
 inline void Heap::reset() { heap_offset = 0; }
