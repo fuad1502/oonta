@@ -18,7 +18,8 @@ enum class HeapGenerations {
 
 class Gc {
   private:
-    static inline size_t MAX_RESERVED_ADDRESS_SPACE = 1024 * 1024 * 1024;
+    static inline size_t MAX_RESERVED_ADDRESS_SPACE =
+        (size_t)8 * 1024 * 1024 * 1024;
     static inline size_t GEN0_INITIAL_LIMIT = 16 * 1024 * 1024;
     static inline size_t GEN1_INITIAL_LIMIT = 32 * 1024 * 1024;
     static inline size_t GEN2_INITIAL_LIMIT = 256 * 1024 * 1024;
