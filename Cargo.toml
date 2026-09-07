@@ -7,10 +7,10 @@ authors = ["Fuad Ismail <fuad1502@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/fuad1502/oonta"
 readme = "README.md"
-keywords = ["compiler", "ocaml", "llvm"]
+keywords = ["compiler", "ocaml", "llvm", "garbage-collection"]
 
 [dependencies]
-llvm-stackmap-parser = { version="0.1.0", path="../llvm-stackmap-parser/" }
+llvm-stackmap-parser = { version="0.1.0" }
 tempfile = "3.27.0"
 
 [build-dependencies]

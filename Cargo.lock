@@ -82,6 +82,8 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 [[package]]
 name = "llvm-stackmap-parser"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c069dd29ef68e50ee64bc5d9b12281a2bda986e2cb125d24754a22be7acd2363"
 dependencies = [
  "goblin",
 ]
