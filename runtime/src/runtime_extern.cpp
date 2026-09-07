@@ -1,1 +1,1 @@
-extern "C" void caml_init() { }
+extern "C" void caml_init() {}
