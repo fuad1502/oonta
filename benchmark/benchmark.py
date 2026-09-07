@@ -48,8 +48,8 @@ def benchmark(binary):
     return elapsed_time
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage      : python3 benchmark/benchmark.py <num of list elements> <benchmark idx>")
+    if len(sys.argv) != 4:
+        print("Usage      : python3 benchmark/benchmark.py <num of list elements> <benchmark idx> <averaging count>")
         print("Benchmarks :\n\t0. Merge sort\n\t1. Insertion sort\n\t2. Compare")
         print("Tips       : run in the repository root directory")
         sys.exit(1)
@@ -71,12 +71,22 @@ def main():
     generate_output_ref_file(numbers, benchmark_idx)
     generate_ocamlopt_benchmark_binary(benchmark_src)
     generate_oonta_benchmark_binary(benchmark_src)
-    ref_time = benchmark("./benchmark/ocamlopt.out")
-    time = benchmark("./benchmark/oonta.out")
+
+    ref_times = []
+    times = []
+    averaging_count = int(sys.argv[3])
+    for i in range(0, averaging_count):
+        ref_time = benchmark("./benchmark/ocamlopt.out")
+        time = benchmark("./benchmark/oonta.out")
+        ref_times.append(ref_time)
+        times.append(time)
+
+    ref_time = sum(ref_times) / len(ref_times)
+    time = sum(times) / len(times)
     if time > ref_time:
-        print(f"> {time/ref_time*100:.2f}% slower")
+        print(f"> {time/ref_time:.2f}x slower")
     else:
-        print(f"> {100-time/ref_time*100:.2f}% faster")
+        print(f"> {ref_time/time:.2f}x faster")
 
 if __name__ == "__main__":
     main()
