@@ -34,7 +34,7 @@ class Gc {
     HeapGenerations gen_to_collect;
     Heap *next_heap;
 
-    size_t collect();
+    std::pair<size_t, size_t> collect();
     void process_work_q();
     void add_pointer_fields_to_work_q(void *obj_addr);
 

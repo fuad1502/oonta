@@ -7,39 +7,132 @@
 #include <cstring>
 #include <sys/mman.h>
 
-void Gc::safepoint(unw_cursor_t cursor) {
-    size_t collected_garbage;
+#ifdef OONTA_RT_DEBUG_GC
+#include <chrono>
 
-    // Collect gen 0
+static std::chrono::time_point start_time = std::chrono::system_clock::now();
+static std::chrono::time_point collection_start_time =
+    std::chrono::system_clock::now();
+static long accumulated_collection_time_ms = 0;
+
+#define GC_LOG(fmt, args...)                                                   \
+    do {                                                                       \
+        fprintf(stderr, fmt "\n", ##args);                                     \
+    } while (0)
+
+#define GC_START_LOG(gen)                                                      \
+    do {                                                                       \
+        collection_start_time = std::chrono::system_clock::now();              \
+        auto current_time_ms =                                                 \
+            std::chrono::duration_cast<std::chrono::milliseconds>(             \
+                collection_start_time - start_time)                            \
+                .count();                                                      \
+                                                                               \
+        GC_LOG("=== Collecting gen " #gen " @%ld ms ===", current_time_ms);    \
+    } while (0)
+
+#define GC_COLLECT_STAT_LOG(collected, promoted)                               \
+    do {                                                                       \
+        auto collection_finish_time = std::chrono::system_clock::now();        \
+        auto collection_duration_ms =                                          \
+            std::chrono::duration_cast<std::chrono::milliseconds>(             \
+                collection_finish_time - collection_start_time)                \
+                .count();                                                      \
+        accumulated_collection_time_ms += collection_duration_ms;              \
+                                                                               \
+        GC_LOG("# Collected %.2f MB, Promoted %.2f MB (%.2f %%), in %ld ms",   \
+               (float)collected / 1024 / 1024, (float)promoted / 1024 / 1024,  \
+               (float)promoted / (promoted + collected) * 100,                 \
+               collection_duration_ms);                                        \
+        GC_LOG("# Accumulated collection time = %ld ms",                       \
+               accumulated_collection_time_ms);                                \
+    } while (0)
+
+#define GC_LIMIT_CHANGE_LOG(gen, new_limit)                                    \
+    do {                                                                       \
+        GC_LOG("# Changed gen " #gen " limit: %.2f MB -> %.2f MB",             \
+               (float)heaps[gen]->limit() / 1024 / 1024,                       \
+               (float)new_limit / 1024 / 1024);                                \
+    } while (0)
+
+#define GC_STAT()                                                              \
+    do {                                                                       \
+        GC_LOG("# Heap statistics:");                                          \
+        GC_LOG("> Gen 0 (%.2f MB / %.2f MB)\n> Gen 1 (%.2f MB / %.2f MB)\n> "  \
+               "Gen 2 "                                                        \
+               "(%.2f "                                                        \
+               "MB / %.2f MB)\n",                                              \
+               (float)heaps[0]->usage() / 1024 / 1024,                         \
+               (float)heaps[0]->limit() / 1024 / 1024,                         \
+               (float)heaps[1]->usage() / 1024 / 1024,                         \
+               (float)heaps[1]->limit() / 1024 / 1024,                         \
+               (float)heaps[2]->usage() / 1024 / 1024,                         \
+               (float)heaps[2]->limit() / 1024 / 1024);                        \
+    } while (0)
+#else
+#define GC_LOG(fmt, args...)                                                   \
+    do {                                                                       \
+    } while (0)
+
+#define GC_START_LOG(gen)                                                      \
+    do {                                                                       \
+    } while (0)
+
+#define GC_COLLECT_STAT_LOG(collected, promoted)                               \
+    do {                                                                       \
+    } while (0)
+
+#define GC_LIMIT_CHANGE_LOG(gen, new_limit)                                    \
+    do {                                                                       \
+    } while (0)
+
+#define GC_STAT()                                                              \
+    do {                                                                       \
+    } while (0)
+#endif
+
+void Gc::safepoint(unw_cursor_t cursor) {
+    size_t collected, promoted;
+
     unw_cursor_t saved_cursor = cursor;
     this->cursor = &saved_cursor;
-    collected_garbage = collect();
+
+    // Collect gen 0
+    GC_START_LOG(0);
+    std::tie(collected, promoted) = collect();
+    GC_COLLECT_STAT_LOG(collected, promoted);
 
     // Calculate new gen 0 limit
-    auto new_limit =
-        100 / MAX_SURVIVOR_RATE * (heaps[0]->limit() - collected_garbage);
+    auto new_limit = 100 / MAX_SURVIVOR_RATE * promoted;
     new_limit =
         (new_limit < GEN0_INITIAL_LIMIT) ? GEN0_INITIAL_LIMIT : new_limit;
+    GC_LIMIT_CHANGE_LOG(0, new_limit);
     heaps[0]->set_limit(new_limit);
+
+    GC_STAT();
 
     gen_to_collect = HeapGenerations::One;
     if (need_collection()) {
-        // Collect gen 1
         unw_cursor_t saved_cursor = cursor;
         this->cursor = &saved_cursor;
         next_heap = heaps[2];
-        collected_garbage = collect();
+
+        // Collect gen 1
+        GC_START_LOG(1);
+        std::tie(collected, promoted) = collect();
+        GC_COLLECT_STAT_LOG(collected, promoted);
 
         // Calculate new gen 1 limit
-        auto new_limit =
-            100 / MAX_SURVIVOR_RATE * (heaps[1]->limit() - collected_garbage);
+        auto new_limit = 100 / MAX_SURVIVOR_RATE * promoted;
         new_limit =
             (new_limit < GEN1_INITIAL_LIMIT) ? GEN1_INITIAL_LIMIT : new_limit;
+        GC_LIMIT_CHANGE_LOG(1, new_limit);
         heaps[1]->set_limit(new_limit);
+
+        GC_STAT();
 
         gen_to_collect = HeapGenerations::Two;
         if (need_collection()) {
-            // Collect gen 2
             unw_cursor_t saved_cursor = cursor;
             this->cursor = &saved_cursor;
 
@@ -48,10 +141,16 @@ void Gc::safepoint(unw_cursor_t cursor) {
             new_limit += new_limit / 100 * GEN2_PERCENTAGE_INCREMENT;
             next_heap = new Heap(MAX_RESERVED_ADDRESS_SPACE, new_limit);
 
-            collected_garbage = collect();
+            // Collect gen 2
+            GC_START_LOG(2);
+            std::tie(collected, promoted) = collect();
+            GC_COLLECT_STAT_LOG(collected, promoted);
+            GC_LIMIT_CHANGE_LOG(2, new_limit);
 
             delete heaps[2];
             heaps[2] = next_heap;
+
+            GC_STAT();
         }
     }
 
@@ -61,7 +160,7 @@ void Gc::safepoint(unw_cursor_t cursor) {
     next_heap = heaps[1];
 }
 
-size_t Gc::collect() {
+std::pair<size_t, size_t> Gc::collect() {
     size_t target_heap_usage_before = heap_to_collect()->usage();
     size_t next_heap_usage_before = next_heap->usage();
 
@@ -111,9 +210,9 @@ size_t Gc::collect() {
     heap_to_collect()->reset();
 
     size_t next_heap_usage_after = next_heap->usage();
-    size_t promoted_obj = (next_heap_usage_after - next_heap_usage_before);
-    size_t collected_garbage = target_heap_usage_before - promoted_obj;
-    return collected_garbage;
+    size_t promoted_bytes = (next_heap_usage_after - next_heap_usage_before);
+    size_t collected_garbage_bytes = target_heap_usage_before - promoted_bytes;
+    return {collected_garbage_bytes, promoted_bytes};
 }
 
 void Gc::process_work_q() {

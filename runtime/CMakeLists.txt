@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
 project(oonta_runtime VERSION 0.3.0)
 
+option(OONTA_RT_DEBUG_GC "Output GC logs to stderr" OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
@@ -24,6 +26,10 @@ add_library(oonta_runtime STATIC
 	src/gc_extern.cpp
 	src/gc.cpp
 )
+
+if (OONTA_RT_DEBUG_GC)
+  add_compile_definitions(oonta_runtime PUBLIC OONTA_RT_DEBUG_GC)
+endif()
 
 target_include_directories(oonta_runtime PUBLIC ${UNWIND_INCLUDE_DIR})
 target_link_libraries(oonta_runtime PUBLIC ${UNWIND_LIBRARY})
