@@ -61,8 +61,8 @@ install llvm`), then:
 
 ```sh
 cargo install oonta # installs the oonta command
-wget https://github.com/fuad1502/oonta/releases/download/v0.2.0/liboonta_runtime-0.2.0-Linux.deb
-sudo dpkg -i liboonta_runtime-0.2.0-Linux.deb # installs oonta runtime library
+wget https://github.com/fuad1502/oonta/releases/download/v0.3.2/liboonta_runtime-0.2.0-Linux.deb
+sudo dpkg -i liboonta_runtime-0.3.2-Linux.deb # installs oonta runtime library
 cat << EOF > main.ml
 let rec factorial x = if x <= 1 then 1 else x * factorial (x - 1)
 let () = print_int (factorial 5)

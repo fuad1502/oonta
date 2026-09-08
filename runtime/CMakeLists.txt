@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(oonta_runtime VERSION 0.3.0)
+project(oonta_runtime VERSION 0.3.2)
 
 option(OONTA_RT_DEBUG_GC "Output GC logs to stderr" OFF)
 
