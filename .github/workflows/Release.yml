@@ -24,6 +24,8 @@ jobs:
         pushed_version=$(echo  | sed -e 's/v//')
         [ v${version} = ${{ github.ref_name }} ]
         echo "version=${version}" >> "$GITHUB_OUTPUT"
+    - name: Install LLVM & libunwind
+      run: sudo apt update && sudo apt install -y llvm libunwind-18-dev
     - name: Build
       run: |
         cmake -DCMAKE_BUILD_TYPE=Release -S runtime -B build
