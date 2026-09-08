@@ -13,6 +13,7 @@
 * [Feature Highlights](#feature-highlights)
     * [Supported Ocaml language features](#supported-ocaml-language-features)
     * [Compile-time monomorphization](#compile-time-monomorphization)
+    * [Generational Garbage Collection](#generational-garbage-collection)
     * [Debug compile phases](#debug-compile-phases)
     * [Error reporting](#error-reporting)
 * [Building from source](#building-from-source)
@@ -29,9 +30,14 @@ language](https://ocaml.org): it generates [LLVM intermediate representation
 and lexing stages. For building the IR, *Oonta* does not depend on the LLVM
 API.
 
+*Oonta* also provides a runtime library (`liboonta_runtime`) which provides a
+*generational garbage collection (GC) service*. The runtime relies on [LLVM
+statepoints](https://llvm.org/docs/Statepoints.html) to discover GC roots on
+the stack. See [this section](#generational-garbage-collection) for more
+information on the garbage collection runtime.
+
 *This project is still a work in progress*, many OCaml features are not yet
 supported. For example, modules, classes and objects are not yet supported.
-Additionally, the runtime does not yet provide a garbage collection service.
 Checkout [this section](#supported-ocaml-language-features) for a complete list
 of currently supported language features.
 
@@ -66,7 +72,7 @@ oonta --opt --exec main.ml
 ```
 ## Benchmark against `ocamlopt`
 
-Two benchmarks are provided:
+Three benchmarks are provided:
 
 Merge sort (`benchmark/merge_sort.ml`):
 
@@ -197,56 +203,91 @@ Execute the following command inside the repository root folder to run the
 benchmarks.
 
 ```sh
-python3 benchmark/benchmark.py 1000000 0 # run the merge_sort.ml benchmark on a list with 1 million elements
-python3 benchmark/benchmark.py 10000 1 # run the insertion_sort.ml benchmark on a list with 10000 elements
-python3 benchmark/benchmark.py 1000000 2 # run the polymorphic_compare.ml benchmark on a list with 10000 elements
+# run the merge_sort.ml benchmark on a list with 1 million elements averaging
+# over 10 measurements
+python3 benchmark/benchmark.py 1000000 0 10
+# run the insertion_sort.ml benchmark on a list with 20 thousand elements
+# averaging over 10 measurements
+python3 benchmark/benchmark.py 20000 1 10
+# run the polymorphic_compare.ml benchmark on a list with 10 million elements
+# averaging over 10 measurements
+python3 benchmark/benchmark.py 10000000 2 10
 ```
 
 > [!WARNING] 
 > Currently, for running the merge sort benchmark on large inputs, increase the
 > stack size limit with `ulimit -s unlimited`
 
-On my Ubuntu machine (AMD Ryzen™ 7 7700X × 16), with `ocamlopt` version 5.4.0
-and LLVM version 20.1.8, the result of running the above benchmarks are as
+On my Ubuntu machine (AMD Ryzen™ 7 7700X × 16), with `ocamlopt` version 5.5.0
+and LLVM version 22.1.0, the result of running the above benchmarks are as
 follows:
 
 ```text
 Benchmarking: merge_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.8747 seconds
-Elapsed time (./benchmark/oonta.out): 0.7445 seconds
-> 14.88% faster
+Elapsed time (./benchmark/ocamlopt.out): 0.9270 seconds
+Elapsed time (./benchmark/oonta.out): 0.8895 seconds
+...
+> 1.04x faster
 
 Benchmarking: insertion_sort.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.1325 seconds
-Elapsed time (./benchmark/oonta.out): 0.3481 seconds
-> 262.68% slower
+Elapsed time (./benchmark/ocamlopt.out): 0.9309 seconds
+Elapsed time (./benchmark/oonta.out): 1.5433 seconds
+...
+> 1.64x slower
 
 Benchmarking: polymorphic_compare.ml
-Elapsed time (./benchmark/ocamlopt.out): 0.1026 seconds
-Elapsed time (./benchmark/oonta.out): 0.0635 seconds
-> 38.14% faster
+Elapsed time (./benchmark/ocamlopt.out): 1.0548 seconds
+Elapsed time (./benchmark/oonta.out): 1.1302 seconds
+...
+> 1.08x slower
 ```
 ## User Guide
 
-```sh
-oonta --help
+```
+# oonta --help
+OCaml to LLVM IR compiler
+
+Usage: oonta [OPTIONS] <file>
+
+Options:
+  -h, --help                    Display this information. 
+  -o <file>, --output <file>    Write output to file.
+  -t, --top-level               Output main function instead of caml_main.
+  -O, --opt                     Optimize LLVM IR output.
+  -c, --compile                 Compile LLVM IR to object file using LLVM.
+  -e, --exec                    Compile LLVM IR to executable. Turning this
+                                option on implicitly turns on both '-t' and
+                                '-c' options.
+  -v, --verbose                 Print steps.
 ```
 ## Dependencies
 
-With no command line options given, the `oonta` command will simply generates
-LLVM IR without requiring any runtime dependencies. However, it provides
-`--opt, -O`, `--compile / -c` and `--exec / -e` options to optimize the
-generated IR, compile the generated IR to an object code and executable,
-respectively, which requires certain dependencies to function. Internally,
-`oonta` will invoke the following commands when given those options:
+To generate LLVM IR from OCaml source code, *oonta* does not require any
+runtime dependencies. However, the IR needs to go through several passes: LLVM
+`place-safepoints` & `rewrite-statepoints-for-gc` passes to connect the IR with
+a garbage collector runtime and `O3` passes if the `--opt` flag is given.
+Currently, `oonta` does not statically link to LLVM libraries, therefore, it
+uses LLVM `opt` binary to run those passes.
+
+Additionally, `oonta` provides the `--compile` flag to compile the generated IR
+into object code using LLVM `llc` binary. An `--exec` flag is also provided to
+link the object code along with required libraries to create an executable
+using `clang++`. The following summarizes how `oonta` utilizes LLVM `opt`,
+`llc`, and `clang++` binaries:
 
 ```sh
 # with --opt
 opt -S -O3 -o <.ll file> <.ll file>
+
+# Run LLVM passes to connect the IR with a garbage collector runtime
+opt --passes=place-safepoints -S -o <.ll file> <.ll file>
+opt --passes=rewrite-statepoints-for-gc -S -o <.ll file> <.ll file>
+
 # with --compile
 llc -O3 -relocation-model=pic --filetype=obj -o <output> <.ll file>
+
 # with --exec
-clang -o <output> <.o file> -loonta_runtime
+clang++ -o <output> <.o file> -loonta_runtime -l:libunwind.a -L<safepoints lib directory> -lsafepoints
 ```
 On Ubuntu, install the `llvm` package to make `opt`, `llc`, and `clang`
 available.
@@ -262,17 +303,28 @@ sudo apt install llvm
 > [https://apt.llvm.org/](https://apt.llvm.org/) for instructions on installing
 > other versions.
 
-Additionally, with `--exec`, you need the *Oonta runtime library*:
-`liboonta_runtime.a`. If you're running an x64 linux machine, you can obtain
-the static library from the [release
+As seen above, with `--exec`, you need several libraries: *Oonta runtime
+library* (`liboonta_runtime`), `libunwind`, and `libsafepoints`.
+`liboonta_runtime` provides the garbage collection service. If you're running
+an x64 linux machine, you can obtain `liboonta_runtime` from the [release
 page](https://github.com/fuad1502/oonta/releases). If not, you would need to
 build the runtime from source by following the guide
 [below](#building-from-source).
 
-> [!NOTE]
-> Currently the runtime only provides memory allocation requests using *bump
-> allocation*. Garbage collection service is not yet available.
+`libsafepoints` provides the necessary data structures used by
+`liboonta_runtime` to discover GC roots on the stack (see [an explanation of
+the garbage collection runtime below](#generational-garbage-collection)). This
+library is generated by the
+[llvm-stackmap-parser](https://crates.io/crates/llvm-stackmap-parser) crate
+when `oonta` is invoked with the `--exec` flag.
 
+`libunwind` is used by `liboonta_runtime` to perform stack unwinding during
+garbage collection. On Ubuntu, install the `libunwind-<LLVM version>-dev`
+package provided by LLVM to acquire the static library & header file:
+
+```sh
+sudo apt install libunwind-18-dev # use the version available on your system
+```
 ## Feature Highlights
 
 ### Supported OCaml language features
@@ -343,6 +395,62 @@ else:
 follow:
     ret void
 }
+```
+### Generational Garbage Collection
+
+*Oonta* uses a generational garbage collector (GC) provided by the *Oonta
+runtime library* (`liboonta_runtime`). It consists of three generations where
+younger generations are moved to older generations if it survies a single
+collection round. The heap limit of each generation is adjusted after every
+collection to ensure promotion rates stays low (< 20 %).
+
+During collection, to discover live objects, it depends on [LLVM stack map
+records](https://llvm.org/docs/StackMaps.html#stack-map-format) to locate GC
+pointers on the stack. LLVM compiler provides the stack map records in the
+`.llvm_stackmaps` section. The records are parsed at compile time using
+[llvm-stackmap-parser](https://crates.io/crates/llvm-stackmap-parser) crate. To
+perform stack unwinding and pointer relocations, `liboonta_runtime` uses
+`libunwind`.
+
+To support scanning / tracing objects, each object is associated with a type
+information. The type information contains the size of the object & offsets
+within the object that contains pointers to other objects:
+
+```c
+struct TypeInformation {
+    size_t object_size;
+    size_t number_of_offsets;
+    size_t offsets[];
+}
+```
+A pointer to this information is passed to the allocator during allocation of
+each object and are stored in the heap next to the object itself. If the object
+has been moved to an older generation during collection, the space is utilized
+to store a "forwarding pointer", a pointer to the new location:
+
+```
+# Object layout
+|0 (LSB) |1       |  ....  |7 (MSB) |
+|mppppppp|pppppppp|  ....  |pppppppp|<Object>
+
+# m = 0 -> not moved, ppp... = pointer to type information
+# m = 1 -> moved, ppp... = new location pointer
+```
+If the *Oonta runtime library* is built using the
+[`OONTA_RT_DEBUG_GC`](#building-from-source) flag turned on, you can view
+several useful information regarding the garbage collector at runtime, such as
+when collection happens, how much time it took, how much garbage was reclaimed,
+etc.:
+
+```
+=== Collecting gen 0 @2595 ms ===
+# Collected 106.54 MB, Promoted 22.44 MB (17.39 %), in 119 ms
+# Accumulated collection time = 1364 ms
+# Changed gen 0 limit: 128.98 MB -> 112.18 MB
+# Heap statistics:
+> Gen 0 (0.00 MB / 112.18 MB)
+> Gen 1 (285.12 MB / 480.00 MB)
+> Gen 2 (96.00 MB / 256.00 MB)
 ```
 ### Debug compile phases
 
@@ -447,10 +555,10 @@ Error: cannot bind expression of type int to ()
 
 ## Building from source
 
-1. Install C++ build dependencies
+1. Install dependencies
 
 ```
-sudo apt install build-essential cmake
+sudo apt install build-essential cmake llvm libunwind-18-dev
 ```
 2. Install `cargo` tool
 
@@ -468,6 +576,9 @@ git clone https://github.com/fuad1502/oonta.git
 cmake -S runtime -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
+To turn on garbage collection logs, add `-DOONTA_RT_DEBUG_GC=ON` after
+`-DCMAKE_BUILD_TYPE=Release`.
+
 5. Install `liboonta_runtime.a`
 
 ```

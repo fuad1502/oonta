@@ -1,8 +1,13 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+
+use llvm_stackmap_parser::safepoint_gen::gen_safepoints_lib;
+use llvm_stackmap_parser::stackmap::StackMap;
+use llvm_stackmap_parser::{read_reloc_names, read_section_bytes, read_section_syms};
+use tempfile::TempDir;
 
 use crate::ast::{Ast, Expr};
 use crate::lexer::Lexer;
@@ -110,17 +115,27 @@ impl Compiler {
         write_module_to_file(&module, out_path).map_err(|e| e.to_string())?;
         self.dbg_end();
 
+        if self.debug_phases {
+            fs::copy(out_path, out_path.with_extension("noopt.ll")).map_err(|e| e.to_string())?;
+        }
+
         if self.optimize_ir {
             self.dbg_start("Optimize LLVM IR");
             optimize_llvm_ir(out_path)?;
             self.dbg_end();
         }
 
+        run_gc_passes(out_path)?;
+
         if self.create_obj_file {
             self.dbg_start("LLVM backend");
             let obj_file = create_obj_file(out_path)?;
+
+            let temp_dir = TempDir::new().map_err(|e| e.to_string())?;
+            let safepoints_lib = create_safepoints_lib(&obj_file, temp_dir.path())?;
+
             if self.create_executable {
-                let _ = create_executable(&obj_file)?;
+                let _ = create_executable(&obj_file, &safepoints_lib)?;
             }
             self.dbg_end();
         }
@@ -198,6 +213,37 @@ fn write_module_to_file(module: &Module, path: &Path) -> std::io::Result<()> {
     module.serialize(Box::new(wr))
 }
 
+fn run_gc_passes(path: &Path) -> Result<(), String> {
+    place_safepoints(path)?;
+    rewrite_statepoints(path)
+}
+
+fn place_safepoints(path: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("opt");
+    cmd.args([
+        "--passes=place-safepoints",
+        "-S",
+        "-o",
+        path.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(())
+}
+
+fn rewrite_statepoints(path: &Path) -> Result<(), String> {
+    let mut cmd = Command::new("opt");
+    cmd.args([
+        "--passes=rewrite-statepoints-for-gc",
+        "-S",
+        "-o",
+        path.to_str().unwrap(),
+        path.to_str().unwrap(),
+    ]);
+    execute_command(cmd)?;
+    Ok(())
+}
+
 fn optimize_llvm_ir(path: &Path) -> Result<(), String> {
     let mut cmd = Command::new("opt");
     cmd.args([
@@ -226,14 +272,26 @@ fn create_obj_file(path: &Path) -> Result<PathBuf, String> {
     Ok(obj_file)
 }
 
-fn create_executable(path: &Path) -> Result<PathBuf, String> {
-    let mut cmd = Command::new("clang");
+fn create_safepoints_lib(obj_file: &Path, temp_dir: &Path) -> Result<PathBuf, String> {
+    let bytes = read_section_bytes(obj_file, ".llvm_stackmaps")?;
+    let stack_map = StackMap::from(&bytes[..]);
+    let reloc_names = read_reloc_names(obj_file, ".rela.llvm_stackmaps");
+    let global_gcroot_names = read_section_syms(obj_file, ".gcroots");
+    gen_safepoints_lib(&stack_map, &reloc_names, &global_gcroot_names, temp_dir)
+}
+
+fn create_executable(path: &Path, safepoints_lib: &Path) -> Result<PathBuf, String> {
+    let mut cmd = Command::new("clang++");
     let executable = path.with_extension("out");
     cmd.args([
         "-o",
         executable.to_str().unwrap(),
         path.to_str().unwrap(),
         "-loonta_runtime",
+        "-l:libunwind.a",
+        "-L",
+        safepoints_lib.parent().unwrap().to_str().unwrap(),
+        "-lsafepoints",
     ]);
     execute_command(cmd)?;
     Ok(executable)

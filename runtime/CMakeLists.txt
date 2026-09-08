@@ -1,14 +1,38 @@
 cmake_minimum_required(VERSION 3.15)
 project(oonta_runtime VERSION 0.3.0)
 
+option(OONTA_RT_DEBUG_GC "Output GC logs to stderr" OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+find_program(LLVM_CONFIG NAMES llvm-config)
+if(LLVM_CONFIG)
+  execute_process(COMMAND "${LLVM_CONFIG}" --libdir
+    OUTPUT_VARIABLE _llvm_libdir
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  execute_process(COMMAND "${LLVM_CONFIG}" --includedir
+    OUTPUT_VARIABLE _llvm_incdir
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+endif()
+
+find_path(UNWIND_INCLUDE_DIR NAMES libunwind.h HINTS "${_llvm_incdir}")
+find_library(UNWIND_LIBRARY NAMES libunwind.a HINTS "${_llvm_libdir}/x86_64-unknown-linux-gnu")
 
 add_library(oonta_runtime STATIC
 	src/runtime_extern.cpp
 	src/gc_extern.cpp
 	src/gc.cpp
 )
+
+if (OONTA_RT_DEBUG_GC)
+  add_compile_definitions(oonta_runtime PUBLIC OONTA_RT_DEBUG_GC)
+endif()
+
+target_include_directories(oonta_runtime PUBLIC ${UNWIND_INCLUDE_DIR})
+target_link_libraries(oonta_runtime PUBLIC ${UNWIND_LIBRARY})
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME "liboonta_runtime")

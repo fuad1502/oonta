@@ -21,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install LLVM & libunwind
+        run: sudo apt update && sudo apt install -y llvm libunwind-18-dev
       - name: Build runtime
         run: |
           cmake -DCMAKE_BUILD_TYPE=Release -S runtime -B build
@@ -36,8 +38,6 @@ jobs:
       - name: Install liboonta_runtime.a
         run: sudo cmake --install build
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install LLVM
-        run: sudo apt update && sudo apt install -y llvm
       - name: Build oonta
         run: cargo build --profile release --verbose
       - name: Run oonta tests

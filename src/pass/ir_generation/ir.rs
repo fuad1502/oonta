@@ -13,6 +13,7 @@ pub struct Module {
     global_constants: Vec<GlobalVar>,
     function_defs: BTreeMap<String, Function>,
     function_decls: BTreeMap<String, FunSignature>,
+    extern_variables: BTreeMap<String, IRType>,
     used_names: HashMap<String, usize>,
 }
 
@@ -23,29 +24,26 @@ pub struct GlobalVar {
     constant: bool,
 }
 
-// TODO: Refactor to include FunSignature struct
 pub struct Function {
-    name: String,
-    ret_typ: IRType,
-    params: Vec<Param>,
-    options: FunOptions,
+    signature: FunSignature,
     bbs: Vec<BasicBlock>,
     curr_bb: String,
     used_names: HashMap<String, usize>,
 }
 
-struct Param(String, IRType);
-
 pub struct FunSignature {
     name: String,
     ret_typ: IRType,
-    params: Vec<IRType>,
+    params: Vec<Param>,
     options: FunOptions,
 }
+
+pub struct Param(pub String, pub IRType);
 
 pub struct FunOptions {
     is_varargs: bool,
     allocator: bool,
+    with_gc: bool,
     fastcc: bool,
 }
 
@@ -68,6 +66,7 @@ pub enum IRType {
     I32,
     I64,
     Ptr,
+    GcPtr,
     Struct(Vec<IRType>),
     Array(Box<IRType>, usize),
 }
@@ -110,6 +109,7 @@ pub enum IRPri {
     I32(i32),
     I64(i64),
     Str(&'static str),
+    Array(Vec<IRPri>),
 }
 
 impl Module {
@@ -139,8 +139,8 @@ impl Module {
     }
 
     pub fn new_function(&mut self, mut function: Function) -> String {
-        let name = self.new_name(&function.name);
-        function.name = name.clone();
+        let name = self.new_name(&function.signature.name);
+        function.signature.name = name.clone();
         self.function_defs.insert(name.clone(), function);
         name
     }
@@ -148,6 +148,10 @@ impl Module {
     pub fn new_function_decl(&mut self, signature: FunSignature) {
         self.function_decls
             .insert(signature.name.clone(), signature);
+    }
+
+    pub fn new_extern_variable(&mut self, name: String, typ: IRType) {
+        self.extern_variables.insert(name, typ);
     }
 
     pub fn get_function(&mut self, name: &str) -> Option<&mut Function> {
@@ -162,6 +166,10 @@ impl Module {
         self.function_decls
             .values()
             .try_for_each(|decl| writeln!(wr, "{decl}"))?;
+        writeln!(wr)?;
+        self.extern_variables
+            .iter()
+            .try_for_each(|(name, typ)| writeln!(wr, "@{name} = external global {typ}"))?;
         writeln!(wr)?;
         self.global_constants
             .iter()
@@ -198,34 +206,32 @@ impl std::fmt::Display for GlobalVar {
         } else {
             match typ {
                 IRType::I32 | IRType::I64 | IRType::I1 => "0",
-                IRType::Ptr => "null",
+                IRType::Ptr | IRType::GcPtr => "null",
                 _ => unreachable!(),
             }
         };
         let global_or_const = if self.constant { "constant" } else { "global" };
-        write!(fmt, "@{name} = {global_or_const} {typ} {init}")
+        write!(fmt, "@{name} = {global_or_const} {typ} {init}")?;
+
+        if matches!(typ, IRType::GcPtr) {
+            write!(fmt, ", section \".gcroots\", align 8")
+        } else {
+            Ok(())
+        }
     }
 }
 
 impl Function {
-    pub fn new(name: String, ret_typ: IRType, params: Vec<(String, IRType)>) -> Self {
+    pub fn new(name: String, ret_typ: IRType, params: Vec<Param>) -> Self {
         let mut fun = Self {
-            name,
-            ret_typ,
-            options: FunOptions::default(),
-            params: vec![],
+            signature: FunSignature::new(name, ret_typ, params),
             bbs: vec![],
             curr_bb: String::new(),
             used_names: HashMap::new(),
         };
         _ = fun.new_name("");
-        let params = params
-            .into_iter()
-            .map(|(n, t)| Param(fun.new_name(&n), t))
-            .collect();
         let entry_label = fun.new_name("entry");
         let entry_bb = BasicBlock::new(entry_label.clone());
-        fun.params = params;
         fun.bbs.push(entry_bb);
         fun.curr_bb = entry_label;
         fun
@@ -238,12 +244,22 @@ impl Function {
             let params = ir_typs
                 .into_iter()
                 .zip(param_names)
-                .map(|(ir_typ, name)| (name, ir_typ))
-                .collect::<Vec<(String, IRType)>>();
+                .map(|(ir_typ, name)| Param(name, ir_typ))
+                .collect::<Vec<Param>>();
             Function::new(name, ret_typ, params)
         } else {
             unreachable!()
         }
+    }
+
+    pub fn gcstrategy(mut self, value: bool) -> Self {
+        self.signature = self.signature.gcstrategy(value);
+        self
+    }
+
+    pub fn fastcc(mut self, value: bool) -> Self {
+        self.signature = self.signature.fastcc(value);
+        self
     }
 
     pub fn add_new_bb(&mut self, label: &str) -> String {
@@ -268,19 +284,22 @@ impl Function {
 
     pub fn add_param(&mut self, param: (String, IRType)) {
         let name = self.new_name(&param.0);
-        self.params.push(Param(name, param.1));
+        self.signature.params.push(Param(name, param.1));
     }
 
     pub fn param(&self, idx: usize) -> IRValue {
-        IRValue::Reg(self.params[idx].0.clone(), self.params[idx].1.clone())
+        IRValue::Reg(
+            self.signature.params[idx].0.clone(),
+            self.signature.params[idx].1.clone(),
+        )
     }
 
     pub fn name(&self) -> &str {
-        &self.name
+        &self.signature.name
     }
 
     pub fn num_of_params(&self) -> usize {
-        self.params.len()
+        self.signature.params.len()
     }
 
     pub fn getelemptr(&mut self, typ: IRType, src: IRValue, indexes: &[i32]) -> IRValue {
@@ -290,8 +309,8 @@ impl Function {
             .collect();
         let res_name = self.new_name("r");
         let instr = Instr {
+            res: IRValue::Reg(res_name, src.typ()),
             class: InstrClass::GetElemPtr(typ, src, indexes),
-            res: IRValue::Reg(res_name, IRType::Ptr),
         };
         self.push_instr(instr.clone());
         instr.value()
@@ -459,14 +478,23 @@ impl Function {
 
 impl std::fmt::Display for Function {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
-        let ret_typ = &self.ret_typ;
-        let name = &self.name;
-        write!(fmt, "define {} {ret_typ} @{name}(", self.options.cc_str())?;
-        write_comma_separated(&self.params, fmt)?;
-        if self.options.is_varargs {
+        let ret_typ = &self.signature.ret_typ;
+        let name = &self.signature.name;
+        write!(
+            fmt,
+            "define {} {ret_typ} @{name}(",
+            self.signature.options.cc_str()
+        )?;
+        write_comma_separated(&self.signature.params, fmt)?;
+        if self.signature.options.is_varargs {
             write!(fmt, ", ...")?;
         }
-        writeln!(fmt, ") {} {{", self.options.fun_attr_str())?;
+        writeln!(
+            fmt,
+            ") {} {} {{",
+            self.signature.options.gc_strategy_str(),
+            self.signature.options.fun_attr_str()
+        )?;
         self.bbs.iter().try_for_each(|bb| write!(fmt, "{bb}"))?;
         write!(fmt, "}}")
     }
@@ -481,7 +509,7 @@ impl std::fmt::Display for Param {
 }
 
 impl FunSignature {
-    pub fn new(name: String, ret_typ: IRType, params: Vec<IRType>) -> Self {
+    pub fn new(name: String, ret_typ: IRType, params: Vec<Param>) -> Self {
         Self {
             name,
             ret_typ,
@@ -490,18 +518,36 @@ impl FunSignature {
         }
     }
 
-    pub fn varargs(mut self) -> Self {
-        self.options.is_varargs = true;
+    pub fn no_param_names(name: String, ret_typ: IRType, param_typs: Vec<IRType>) -> Self {
+        Self {
+            name,
+            ret_typ,
+            params: param_typs
+                .into_iter()
+                .enumerate()
+                .map(|(i, t)| Param(format!("p{i}"), t))
+                .collect(),
+            options: FunOptions::default(),
+        }
+    }
+
+    pub fn varargs(mut self, value: bool) -> Self {
+        self.options.is_varargs = value;
         self
     }
 
-    pub fn ccc(mut self) -> Self {
-        self.options.fastcc = false;
+    pub fn fastcc(mut self, value: bool) -> Self {
+        self.options.fastcc = value;
         self
     }
 
-    pub fn alloc(mut self) -> Self {
-        self.options.allocator = true;
+    pub fn gcstrategy(mut self, value: bool) -> Self {
+        self.options.with_gc = value;
+        self
+    }
+
+    pub fn allocator_attr(mut self, value: bool) -> Self {
+        self.options.allocator = value;
         self
     }
 
@@ -519,7 +565,12 @@ impl std::fmt::Display for FunSignature {
         if self.options.is_varargs {
             write!(fmt, ", ...")?;
         }
-        write!(fmt, ") {}", self.options.fun_attr_str())?;
+        write!(
+            fmt,
+            ") {} {}",
+            self.options.gc_strategy_str(),
+            self.options.fun_attr_str()
+        )?;
         Ok(())
     }
 }
@@ -527,12 +578,20 @@ impl std::fmt::Display for FunSignature {
 impl FunOptions {
     fn cc_str(&self) -> &'static str {
         // TODO: use other calling convention for fast call
-        if self.fastcc { "ccc" } else { "" }
+        if self.fastcc { "fastcc" } else { "" }
     }
 
-    fn fun_attr_str(&self) -> &'static str {
+    fn fun_attr_str(&self) -> &str {
         if self.allocator {
-            "mustprogress nofree nounwind willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite)"
+            "mustprogress nofree willreturn allockind(\"alloc,uninitialized\") allocsize(0) memory(inaccessiblemem: readwrite)"
+        } else {
+            ""
+        }
+    }
+
+    fn gc_strategy_str(&self) -> &'static str {
+        if self.with_gc {
+            "gc \"statepoint-example\""
         } else {
             ""
         }
@@ -544,6 +603,7 @@ impl Default for FunOptions {
         Self {
             is_varargs: false,
             allocator: false,
+            with_gc: true,
             fastcc: true,
         }
     }
@@ -587,14 +647,14 @@ impl std::fmt::Display for Instr {
         if let Some(name) = self.res.reg_name() {
             write!(fmt, "%{name} = ")?;
         }
-        write!(fmt, "{}", &self.class)
+        write!(fmt, "{}", self.class)
     }
 }
 
 impl std::fmt::Display for InstrClass {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
-            InstrClass::Load(irtype, src) => write!(fmt, "load {irtype}, ptr {}", src.name()),
+            InstrClass::Load(irtype, src) => write!(fmt, "load {irtype}, {}", src),
             InstrClass::Add(irtype, lhs, rhs) => {
                 write!(fmt, "add {irtype} {}, {}", lhs.name(), rhs.name())
             }
@@ -628,16 +688,16 @@ impl std::fmt::Display for InstrClass {
             InstrClass::And(irtype, lhs, rhs) => {
                 write!(fmt, "and {irtype} {}, {}", lhs.name(), rhs.name())
             }
-            InstrClass::Store(src, dst) => write!(fmt, "store {src}, ptr {}", dst.name()),
+            InstrClass::Store(src, dst) => write!(fmt, "store {src}, {}", dst),
             InstrClass::Call(fun_ptr, ret_typ, args, fast) => {
                 // TODO: use other calling convention for fast call
-                let cc = if *fast { "ccc" } else { "" };
+                let cc = if *fast { "fastcc" } else { "" };
                 write!(fmt, "call {cc} {ret_typ} {}(", fun_ptr.name())?;
                 write_comma_separated(args, fmt)?;
                 write!(fmt, ")")
             }
             InstrClass::GetElemPtr(irtype, src, indexes) => {
-                write!(fmt, "getelementptr {irtype}, {src}, ")?;
+                write!(fmt, "getelementptr inbounds {irtype}, {src}, ")?;
                 write_comma_separated(indexes, fmt)
             }
             InstrClass::Return(val) => write!(fmt, "ret {val}"),
@@ -664,10 +724,7 @@ impl IRValue {
     pub fn typ(&self) -> IRType {
         match self {
             IRValue::Void => IRType::Void,
-            IRValue::Pri(IRPri::I1(_)) => IRType::I1,
-            IRValue::Pri(IRPri::I32(_)) => IRType::I32,
-            IRValue::Pri(IRPri::I64(_)) => IRType::I64,
-            IRValue::Pri(IRPri::Str(str)) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
+            IRValue::Pri(primitive) => primitive.typ(),
             IRValue::Reg(_, ir_type) => ir_type.clone(),
             IRValue::Global(_, ir_type) => ir_type.clone(),
         }
@@ -695,6 +752,16 @@ impl IRValue {
             IRValue::Pri(IRPri::I64(val)) => val.to_string(),
             IRValue::Pri(IRPri::Str(val)) => format!("c\"{}\"", hex_string(val)),
             IRValue::Void => "void".to_string(),
+            IRValue::Pri(IRPri::Array(primitives)) => {
+                format!(
+                    "[{}]",
+                    primitives
+                        .iter()
+                        .map(|pri| pri.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
         }
     }
 }
@@ -705,7 +772,7 @@ impl std::fmt::Display for IRValue {
             IRValue::Void => write!(fmt, "void"),
             IRValue::Pri(irpri) => write!(fmt, "{irpri}"),
             IRValue::Reg(name, irtype) => write!(fmt, "{irtype} %{name}"),
-            IRValue::Global(name, irtype) => write!(fmt, "{irtype} @{name}"),
+            IRValue::Global(name, _) => write!(fmt, "ptr @{name}"),
         }
     }
 }
@@ -713,6 +780,24 @@ impl std::fmt::Display for IRValue {
 impl IRType {
     pub fn is_void(&self) -> bool {
         matches!(self, IRType::Void)
+    }
+
+    pub fn is_gcptr(&self) -> bool {
+        matches!(self, IRType::GcPtr)
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            IRType::I1 => 1,
+            IRType::I8 => 1,
+            IRType::I32 => 4,
+            IRType::I64 => 8,
+            IRType::Ptr => 8,
+            IRType::GcPtr => 8,
+            IRType::Struct(typs) => typs.iter().map(Self::size).sum(),
+            IRType::Array(typ, num) => typ.size() * num,
+            IRType::Void => unreachable!(),
+        }
     }
 }
 
@@ -725,7 +810,7 @@ impl From<Rc<RefCell<Type>>> for IRType {
 impl From<&Type> for IRType {
     fn from(typ: &Type) -> Self {
         match typ {
-            Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::Ptr,
+            Type::Fun(_) | Type::Tuple(_) | Type::Custom(_, _) => IRType::GcPtr,
             Type::Primitive(Primitive::Integer) => IRType::I64,
             Type::Primitive(Primitive::Bool) | Type::Primitive(Primitive::Unit) => IRType::I1,
             Type::Variable(Variable::Unbound(_)) => {
@@ -747,12 +832,27 @@ impl std::fmt::Display for IRType {
             IRType::I32 => write!(fmt, "i32"),
             IRType::I64 => write!(fmt, "i64"),
             IRType::Ptr => write!(fmt, "ptr"),
+            IRType::GcPtr => write!(fmt, "ptr addrspace(1)"),
             IRType::Array(typ, sz) => write!(fmt, "[{sz} x {typ}]"),
             IRType::Struct(typs) => {
                 write!(fmt, "{{")?;
                 write_comma_separated(typs, fmt)?;
                 write!(fmt, "}}")
             }
+        }
+    }
+}
+
+impl IRPri {
+    pub fn typ(&self) -> IRType {
+        match self {
+            IRPri::I1(_) => IRType::I1,
+            IRPri::I32(_) => IRType::I32,
+            IRPri::I64(_) => IRType::I64,
+            IRPri::Array(primitives) => {
+                IRType::Array(Box::new(primitives[0].typ()), primitives.len())
+            }
+            IRPri::Str(str) => IRType::Array(Box::new(IRType::I8), str.len() + 1),
         }
     }
 }
@@ -764,7 +864,28 @@ impl std::fmt::Display for IRPri {
             IRPri::I32(val) => write!(fmt, "i32 {val}"),
             IRPri::I64(val) => write!(fmt, "i64 {val}"),
             IRPri::Str(val) => write!(fmt, "[i8 x {}] c\"{}\"", val.len() + 1, hex_string(val)),
+            IRPri::Array(primitives) => {
+                write!(fmt, "[{} x {}] [", primitives[0].typ(), primitives.len())?;
+                write_comma_separated(primitives, fmt)?;
+                write!(fmt, "]")
+            }
         }
+    }
+}
+
+impl<T> From<Vec<T>> for IRPri
+where
+    IRPri: From<T>,
+{
+    fn from(value: Vec<T>) -> Self {
+        let primitives = value.into_iter().map(IRPri::from).collect();
+        Self::Array(primitives)
+    }
+}
+
+impl From<usize> for IRPri {
+    fn from(value: usize) -> Self {
+        IRPri::I64(value as i64)
     }
 }
 
